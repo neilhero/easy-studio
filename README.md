@@ -1,6 +1,6 @@
 # Lazy Studio
 
-当前版本：**v0.6.0**（版本来源：`VERSION`；Git 标签：`v0.6.0`）。
+当前版本：**v0.6.1**（版本来源：`VERSION`；Git 标签：`v0.6.1`）。
 
 本机影片放映室：看片、逐帧检查、查看剪辑时间线、对照版本，并保存带时间码和截帧的反馈。
 
@@ -162,3 +162,19 @@ v0.4.2：素材分类使用共用外框的分段控件，内部无独立边框�
 验证：35项回归测试通过，含真实MCP stdio到本机服务的三素材全流程、统一任务取消/重试、幂等与恢复、权限限制及既有功能。
 
 当前机器已通过Codex CLI注册lazy-studio本机MCP并做真实连接只读检查；具体宿主是否热加载以工具发现为准，新建聊天或重新连接后使用。
+
+
+## macOS常驻运行（v0.6.1）
+
+直接运行run.py依赖当前终端/执行会话。长期使用可安装用户级launchd服务，独立于聊天与终端，登录后启动，进程退出后自动重启；仅监听本机。先确认无任务运行并停止原手动服务，保留所需工具环境变量，再执行：
+
+```sh
+python3 service.py install --root '/项目目录' --port 8790 --import-root '/允许导入的目录'
+python3 service.py status --root '/项目目录' --port 8790
+python3 service.py stop --root '/项目目录' --port 8790
+python3 service.py start --root '/项目目录' --port 8790
+```
+
+安装仅登记当前项目的用户LaunchAgent，不安装系统级服务；只继承FFmpeg/FFprobe/Real-ESRGAN及Python缓存路径变量。配置位于用户 `Library/LaunchAgents/local.lazy-studio.<项目标识>.plist`，输出及错误日志位于项目 `.studio/logs/service.out.log`、`service.err.log`。同项目服务锁继续生效；安装时遇到手动服务或已加载服务会拒绝覆盖。stop会先检查未结束任务；stop后本次登录不自动重启，start可恢复，保留的安装配置会在下次登录加载。
+
+应用休眠/设备关机期间不保证本机服务响应；恢复登录后由launchd启动。后台程序崩溃可自动重启，但中断任务仍需按v0.6任务状态显式处理，不自动重复执行。
