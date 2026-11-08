@@ -779,6 +779,15 @@ details.rec[open] > summary { margin-bottom: 8px; }
 .lightbox.full .img { aspect-ratio: auto; height: auto; width: auto; max-width: 92vw; max-height: 86vh; object-fit: contain; padding: 0; background: transparent; }
 .lightbox .cap { max-width: 80vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast { pointer-events: none; }
+/* 镜头评审沿用现有控件；对照窗口留足两幅画面的宽度。 */
+.review-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.review-box { margin-top:16px; padding:12px; background:var(--island-2); border-radius:12px; }
+.review-box .select, .review-box .textarea { margin-top:8px; }
+.review-dialog { width:min(1080px,95vw); max-height:92vh; overflow:auto; border:1px solid var(--line-2); border-radius:18px; padding:24px; background:var(--island); color:var(--text); }
+.review-dialog::backdrop { background:rgba(0,0,0,.7); }
+.review-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:16px; }
+.review-pair video { width:100%; aspect-ratio:16/9; background:#000; object-fit:contain; }
+@media(max-width:720px) { .review-pair { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -863,7 +872,7 @@ const post = (url, body) => api(url, { method: 'POST', headers: { 'Content-Type'
 const fmt = t => { t = Math.max(0, +t || 0); const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`; };
 const parseTc = s => { const m = /^(\d+):(\d+(?:\.\d+)?)$/.exec(s); return m ? +m[1] * 60 + +m[2] : null; };
 const short = n => n.replace(/\.[^.]+$/, '');
-const fileUrl = p => '/f/' + encodeURI(p);
+const fileUrl = p => '/f/' + p.split('/').map(encodeURIComponent).join('/');
 function toast(msg, kind = '') { const el = $('#toast'); el.className = 'toast ' + kind; el.innerHTML = (kind === 'ok' ? '<span class="ic">' + ICON.save + '</span>' : '') + esc(msg); el.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => { el.hidden = true; }, 2800); }
 const k = (key, what) => h('span', {}, h('span', { class: 'kbd' }, key), what);
 const shown = () => (S.cmp.mode === 'blink' && S.cmp.blinkOn && S.cmp.alt) ? S.cmp.alt : S.cur;
@@ -1213,7 +1222,7 @@ async function pollStat() {
   const dp = S.doc?.path;
   if (dp && (st.docs[dp] ?? null) !== (S.doc.mtime ?? null)) { S.doc = null; if (S.auxTab === 'doc') { const el = $('.aux-scroll'); const top = el ? el.scrollTop : 0; await renderAuxWatch(); if (el) el.scrollTop = top; } }
   if (TL.data && (st.edl ?? null) !== (TL.data.mtime ?? null)) { await tlReload(); if (TL.data?.found) toast('剪辑表变了，时间线已更新'); }
-  if (S.segs && ((st.segments ?? null) !== (S.segs.mtime ?? null) || (st.gen ?? null) !== (S.segs.gen ?? null))) { S.segs = null; if (S.view === 'progress') renderProgress(true); }
+  if (S.segs && ((st.segments ?? null) !== (S.segs.mtime ?? null) || (st.gen ?? null) !== (S.segs.gen ?? null) || (st.library ?? null) !== (S.segs.library ?? null) || (st.review ?? null) !== (S.segs.review_mtime ?? null))) { S.segs = null; if (S.view === 'progress') renderProgress(true); }
   if (S.lib && (st.library ?? null) !== (S.lib.mtime ?? null)) { S.lib = null; if (S.view === 'library') renderLibrary(true); }
   const sig = S.finals.videos.map(v => `${v.path}:${v.size}`).sort().join('|');
   if ((st.finals || '') !== sig) refreshVersions();
@@ -1275,9 +1284,11 @@ function linkTimecodes(el, isDoc) {
 
 /* ---------- 进度 */
 async function renderProgress(force) {
+  const selectedId = S.selSeg?.id;
   const v = $('#v-progress'); v.innerHTML = '';
   if (!S.segs || force) { v.append(h('p', { class: 's t3' }, '读取中…')); try { S.segs = await api('/api/segments'); } catch (e) { v.innerHTML = ''; v.append(h('p', { class: 'err' }, '读不到分段表：' + e.message)); return; } v.innerHTML = ''; }
-  const head = h('div', { class: 'head', style: 'margin-bottom:20px' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, '进度'), h('span', { class: 'sub' }, S.segs.found ? S.segs.path : '脚本/分段表.md')), h('div', { class: 'actions' }, h('button', { class: 'pill sm', type: 'button', onclick: () => { S.selSeg = null; renderProgress(true); renderAuxProgress(); } }, '刷新')));
+  if (selectedId) S.selSeg = S.segs?.rows?.find(r => r.id === selectedId) || null;
+  const head = h('div', { class: 'head', style: 'margin-bottom:20px' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, '进度'), h('span', { class: 'sub' }, S.segs.found ? S.segs.path : '脚本/分段表.md')), h('div', { class: 'actions' }, h('button', { class: 'pill sm', type: 'button', onclick: () => { renderProgress(true); } }, '刷新')));
   v.append(head);
   if (!S.segs.found) { v.append(h('div', { class: 'empty' }, h('div', { class: 'h' }, '还没有分段表'), h('p', {}, '脚本技能写出分段表之后，这里就是进度表：一段一行六格，哪格空着哪格就是下一步。'))); renderAuxProgress(); return; }
   v.append(h('p', { class: 's t2', style: 'margin:-8px 0 16px;font-family:var(--mono);font-size:12px' }, S.segs.status));
@@ -1288,7 +1299,7 @@ async function renderProgress(force) {
     const firstEmpty = cols.find(c => !r.cells[c]);
     const tr = h('tr', { tabindex: '0', 'aria-selected': S.selSeg?.id === r.id ? 'true' : 'false', onclick: () => { S.selSeg = r; $$('tr', tb).forEach(x => x.setAttribute('aria-selected', 'false')); tr.setAttribute('aria-selected', 'true'); renderAuxProgress(); openAux(); }, onkeydown: e => { if (e.key === 'Enter') e.currentTarget.click(); } },
       h('td', { class: 'mono', style: 'font-size:12px' }, r.id), h('td', { class: 't2' }, r.scene), h('td', {}, r.text), h('td', { class: 'num' }, r.dur),
-      ...cols.map(c => { const val = r.cells[c]; const cls = !val ? (c === firstEmpty ? 'cell-next' : '') : /返修|重出|✗/.test(val) ? 'cell-redo' : /✓|候选|选|条/.test(val) ? 'cell-ok' : ''; return h('td', { class: 'c ' + cls }, val || (c === firstEmpty ? '← 下一步' : '')); }));
+      ...cols.map(c => { const val = r.cells[c]; const cls = !val ? (c === firstEmpty ? 'cell-next' : '') : /返修|重出|✗|退回|复核/.test(val) ? 'cell-redo' : /✓|候选|选|条/.test(val) ? 'cell-ok' : ''; return h('td', { class: 'c ' + cls }, val || (c === firstEmpty ? '← 下一步' : '')); }));
     tb.append(tr);
   });
   table.append(tb); v.append(h('div', { class: 'table-wrap' }, table));
@@ -1324,7 +1335,7 @@ function renderJob(job, own) {
 const lineEl = l => h('div', { class: 'line' }, l.speaker ? h('b', {}, l.speaker + '：') : null, l.text || '');
 async function openSegmentFor(clip) {
   if (!S.segs) { try { S.segs = await api('/api/segments'); } catch (e) { toast('读不到分段表：' + e.message, 'bad'); return; } }
-  const row = (S.segs.rows || []).find(r => tokenRe(r.id).test(clip.src));
+  const row = (S.segs.rows || []).find(r => r.id === clip.id || r.scene === clip.id || r.files.candidates.some(c => c.path === clip.src) || tokenRe(r.id).test(clip.src));
   if (!row) { toast('分段表里没有对上这一镜的段'); return; }
   S.selSeg = row; switchView('progress'); await renderProgress(); renderAuxProgress(); openAux();
 }
@@ -1333,9 +1344,8 @@ function renderAuxProgress() {
   if (!r) { a.append(h('div', { class: 'aux-h' }, h('b', {}, '点一段看它怎么生成的'), h('span', {})), h('p', { class: 's t3' }, '参考了什么、发给模型的提示词、出了几条候选、三项证据（同一个人、产品还原、无崩坏），都在这里。')); return; }
   const f = r.files, j = r.json || {};
   a.append(h('div', { class: 'aux-h' }, h('b', { class: 'ellipsis', style: 'min-width:0' }, `${r.id} · ${r.text}`), h('span', {}, r.dur ? `${r.dur} 秒` : '')));
-  a.append(h('div', { class: 'chips' }, ...Object.entries(r.cells).map(([k, v]) => h('span', { class: 'badge ' + (!v ? 'neutral' : /返修|✗/.test(v) ? 'bad' : 'ok') }, `${k} ${v || '—'}`))));
-  const inFilm = TL.data?.found ? TL.data.V.find(c => c.kind === 'live' && tokenRe(r.id).test(c.src)) : null;
-  if (inFilm) a.append(h('div', { style: 'margin-top:12px' }, h('button', { class: 'pill sm', type: 'button', title: `成片 ${fmt(inFilm.start)} 起的那一镜`, onclick: () => { switchView('watch'); $('#video').pause(); seek(inFilm.start + 0.02); } }, `在成片里看这一段 · ${fmt(inFilm.start)}`)));
+  a.append(h('div', { class: 'chips' }, ...Object.entries(r.cells).map(([k, v]) => h('span', { class: 'badge ' + (!v || /待审|按版本/.test(v) ? 'neutral' : /返修|✗|退回|复核/.test(v) ? 'bad' : 'ok') }, `${k} ${v || '—'}`))));
+  a.append(reviewPanel(r));
   const sec = (title, n, ...kids) => a.append(h('div', { class: 'aux-sec seg-detail' }, h('div', { class: 'k' }, title + (n != null ? ` · ${n}` : '')), ...kids));
   // 生成用了什么：分段表里写的参考、首尾帧、参考视频和音频、现场声、故意的效果、规则
   const refs = (j.refs || []).map(x => ({ path: x.file, label: (ROLE[x.role] || x.role || '参考') + (x.note ? ' · ' + x.note : '') }));
@@ -1357,12 +1367,145 @@ function renderAuxProgress() {
     sec('候选', f.candidates.length, h('div', { class: 'cands' }, ...f.candidates.map(c => h('div', { class: 'cand' },
       h('video', { src: fileUrl(c.path), controls: true, preload: 'metadata', muted: true }),
       h('div', { class: 'n' }, h('span', { class: 'ellipsis', style: 'min-width:0' }, c.name), c.selected ? h('span', { class: 'badge ok' }, '选中') : null, c.discarded ? h('span', { class: 'badge neutral' }, '废弃') : null, c.status ? h('span', { class: 'xs t3' }, c.status) : null),
+      candidateReview(r, c),
       c.job ? h('details', { class: 'rec', open: f.candidates.filter(x => x.job).indexOf(c) === 0 }, h('summary', { title: '这一条真正发给模型的提示词、参考图、参考音频和参数' }, `发给模型的提示词和参考`), renderJob(c.job, c.path), c.raw ? h('details', { class: 'rec' }, h('summary', { class: 'sub' }, `原始记录 · ${(c.record || '').split('/').pop()}`), h('pre', { class: 'stt', style: 'max-height:240px' }, JSON.stringify(c.raw, null, 1))) : null) : null))));
-  } else sec('候选', 0, h('p', { class: 's t3' }, '生成/ 里还没有这段的文件。'));
+  } else sec('候选', 0, h('p', { class: 's t3' }, '还没有关联候选。可从上方关联素材库或生成目录中的视频。'));
   const ev = [...(f.product || []).map(x => ({ ...x, lab: '产品对比表' })), ...f.faces.map(x => ({ ...x, lab: '人脸表' })), ...f.sheet.map(x => ({ ...x, lab: '抽帧图' }))];
   if (ev.length) sec('证据', ev.length, h('div', { class: 'evid' }, ...ev.map((x, i) => h('button', { class: 'pic wide', type: 'button', onclick: () => openLightbox(ev, i) }, h('img', { src: fileUrl(x.path), alt: x.lab, loading: 'lazy' }), h('span', { class: 'cap' }, `${x.lab} · ${x.name}`)))));
   f.stt.forEach(x => sec('听写 · ' + x.name, null, h('div', { class: 'stt' }, x.text)));
   if (f.other.length) sec('其他文件', f.other.length, h('div', {}, ...f.other.map(x => h('div', { class: 'path' }, x.path))));
+}
+
+/* ---------- 候选、素材评审和指定版本验收 */
+const reviewBadge = text => h('span', { class: 'badge ' + (text === '通过' ? 'ok' : /退回|复核/.test(text) ? 'warn' : 'neutral') }, text);
+async function reviewSave(body, button) {
+  if (button) button.disabled = true;
+  try {
+    await post('/api/review', body);
+    await renderProgress(true);
+    toast('已保存评审记录', 'ok');
+    return true;
+  } catch (e) { toast(e.message, 'bad'); return false; }
+  finally { if (button?.isConnected) button.disabled = false; }
+}
+function candidateReview(r, c) {
+  const note = h('textarea', { class: 'textarea', rows: '2', 'aria-label': `${c.name} 评审意见`, placeholder: '评审意见；退回时必填' }, c.review_record?.note || '');
+  const save = (action, status, e) => reviewSave({ action, segment: r.id, path: c.path, fingerprint: c.fingerprint, status, note: note.value }, e.currentTarget);
+  return h('div', { class: 'review-box' }, reviewBadge(c.selection_stale ? '选用文件已变化，需复核' : c.review),
+    h('p', { class: 'path' }, c.path), c.missing ? h('p', {class:'err'}, '文件已缺失，可解除关联后重新导入') : null, note,
+    h('div', { class: 'review-actions' },
+      h('button', { class: 'pill sm', type: 'button', disabled: c.missing, onclick: e => save('select', null, e) }, c.selected ? '确认选用此版本' : '选用'),
+      h('button', { class: 'pill sm', type: 'button', disabled: c.missing, onclick: e => save('review', 'approved', e) }, '过审'),
+      h('button', { class: 'pill sm danger', type: 'button', disabled: c.missing, onclick: e => save('review', 'rejected', e) }, '退回'),
+      h('button', { class: 'pill sm', type: 'button', disabled: c.missing, onclick: e => save('review', 'pending', e) }, '重置待审'),
+      r.review_entry?.paths?.includes(c.path) ? h('button', { class: 'pill sm', type: 'button', onclick: e => save('unlink', null, e) }, '解除关联') : null));
+}
+function reviewPanel(r) {
+  const box = h('div', { class: 'review-box' });
+  box.append(h('b', {}, '候选关联'), h('p', { class: 'xs t3' }, '选用只登记候选，不改变现有初剪。'));
+  const chooser = h('select', { class: 'select', 'aria-label': '关联视频候选' }, h('option', { value: '' }, '选择素材库或生成目录中的视频…'));
+  const load = h('button', { class: 'pill sm', type: 'button', onclick: async () => {
+    load.disabled = true;
+    try {
+      const data = await api('/api/candidates');
+      chooser.innerHTML = ''; chooser.append(h('option', { value: '' }, '选择视频（可逐条关联多个）…'));
+      const linked = new Set(r.files.candidates.map(c => c.path));
+      data.items.filter(c => !linked.has(c.path)).forEach(c => chooser.append(h('option', { value: c.path }, c.path)));
+      if (chooser.options.length === 1) toast('没有未关联的视频');
+    } catch (e) { toast(e.message, 'bad'); }
+    finally { load.disabled = false; }
+  } }, '读取视频列表');
+  box.append(h('div', { class: 'review-actions' }, load), chooser,
+    h('button', { class: 'pill sm', type: 'button', style: 'margin-top:8px', onclick: e => {
+      if (!chooser.value) { toast('请先读取列表并选择视频'); return; }
+      reviewSave({ action: 'associate', segment: r.id, path: chooser.value }, e.currentTarget);
+    } }, '关联到这一镜'));
+  const finals = h('select', { class: 'select', 'aria-label': '验收成片版本' }, h('option', { value: '' }, '选择需要验收的成片…'));
+  S.finals.videos.forEach(v => finals.append(h('option', { value: v.path, selected: v.path === S.reviewFinal }, `${v.version} · ${v.name}`)));
+  const ctxBox = h('div', { style: 'margin-top:12px' });
+  const update = async () => {
+    const path = finals.value; S.reviewFinal = path;
+    ctxBox.innerHTML = '';
+    if (!path) return;
+    ctxBox.append(h('p', { class: 's t3' }, '核对成片与剪辑表…'));
+    try {
+      const ctx = await api('/api/review-context?segment=' + encodeURIComponent(r.id) + '&final=' + encodeURIComponent(path));
+      if (!box.isConnected || finals.value !== path) return;
+      ctxBox.innerHTML = '';
+      ctxBox.append(reviewBadge(ctx.status));
+      if (!ctx.clip) { ctxBox.append(h('p', { class: 's t3' }, ctx.reason)); return; }
+      ctxBox.append(h('p', { class: 'xs t3', style: 'margin-top:8px' }, `${ctx.clip.id} · 成片 ${fmt(ctx.clip.start)}–${fmt(ctx.clip.start + ctx.clip.dur)}`));
+      if (!ctx.confirmed) {
+        ctxBox.append(h('p', { class: 's warn-t' }, '请核对这份剪辑表确实对应所选成片，再确认。旧版不能直接套用当前剪辑表。'),
+          h('button', { class: 'pill sm', type: 'button', onclick: e => reviewSave({ action: 'bind', segment: r.id, final: path, signature: ctx.signature }, e.currentTarget) }, '确认剪辑表对应此版本'));
+        return;
+      }
+      const note = h('textarea', { class: 'textarea', rows: '2', 'aria-label': '成片验收意见', placeholder: '衔接、节奏、声音意见；退回时必填' }, ctx.record?.note || '');
+      ctxBox.append(note, h('div', { class: 'review-actions' }, ...[['approved', '验收通过'], ['rejected', '退回修改'], ['pending', '重置待审']].map(([status, label]) => h('button', { class: 'pill sm', type: 'button', onclick: e => reviewSave({ action: 'accept', segment: r.id, final: path, signature: ctx.signature, status, note: note.value }, e.currentTarget) }, label))));
+      ctxBox.append(h('button', {class:'pill sm', type:'button', style:'margin-top:8px', onclick: () => {
+        const film = S.finals.videos.find(v => v.path === path);
+        switchView('watch'); S.cmp.mode = 'off'; selectVersion(film, false);
+        $('#video').addEventListener('loadedmetadata', () => { $('#video').pause(); seek(ctx.clip.start); }, {once:true});
+      }}, '在此版本中查看这一镜'));
+      const idx = ctx.neighbors.findIndex(c => c.i === ctx.clip.i);
+      const actions = h('div', { class: 'review-actions' });
+      if (idx > 0) actions.append(h('button', { class: 'pill sm', type: 'button', onclick: () => openContinuity(ctx, ctx.neighbors[idx - 1], ctx.clip) }, '前镜尾 ↔ 本镜头'));
+      if (idx >= 0 && idx < ctx.neighbors.length - 1) actions.append(h('button', { class: 'pill sm', type: 'button', onclick: () => openContinuity(ctx, ctx.clip, ctx.neighbors[idx + 1]) }, '本镜尾 ↔ 后镜头'));
+      ctxBox.append(actions);
+      if (!actions.children.length) ctxBox.append(h('p', { class: 's t3' }, '时间线只有这一镜，没有相邻镜头。'));
+      const records = r.review_entry?.acceptances || [];
+      if (records.length) ctxBox.append(h('details', { class: 'rec' }, h('summary', {}, `历史验收 · ${records.length}`), ...records.slice().reverse().map(x => h('p', { class: 'xs t3 wrap' }, `${x.at} · ${x.final} · ${{approved:'通过',rejected:'退回',pending:'待审'}[x.status]} · ${x.note || ''}`))));
+    } catch (e) { if (box.isConnected && finals.value === path) { ctxBox.innerHTML = ''; ctxBox.append(h('p', { class: 'err' }, e.message)); } }
+  };
+  finals.addEventListener('change', update);
+  box.append(h('b', { style: 'display:block;margin-top:18px' }, '指定版本验收与连戏'), finals, ctxBox);
+  // 等待父节点挂载后再读上下文；切换镜头时旧请求不会覆盖新面板。
+  setTimeout(update, 0);
+  return box;
+}
+function openContinuity(ctx, left, right) {
+  $('#video')?.pause();
+  document.querySelector('.review-dialog')?.close();
+  let looping = false;
+  const dialog = h('dialog', { class: 'review-dialog', 'aria-label': '前后镜对照' });
+  const players = [];
+  const fps = S.finals.videos.find(x => x.path === ctx.final)?.fps || 25;
+  const close = () => dialog.close();
+  dialog.append(h('div', { style: 'display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px' }, h('b', {}, '前后镜对照'), h('button', { class: 'pill sm', type: 'button', onclick: close }, '关闭')),
+    h('p', { class: 'xs t3 wrap' }, `${ctx.final} · 使用已确认剪辑表的成片时间，每侧显示切点附近1秒。默认静音，可用各自播放器开声音。`));
+  const grid = h('div', { class: 'review-pair' });
+  [[left, true], [right, false]].forEach(([clip, tail]) => {
+    const start = tail ? Math.max(clip.start, clip.start + clip.dur - 1) : clip.start;
+    const end = tail ? clip.start + clip.dur : Math.min(clip.start + clip.dur, clip.start + 1);
+    const last = Math.max(start, end - 1 / fps);
+    const video = h('video', { src: fileUrl(ctx.final), controls: true, muted: true, preload: 'auto', playsinline: true });
+    const label = h('p', { class: 'mono t3', 'aria-live': 'off' });
+    const position = t => { video.pause(); video.currentTime = Math.max(start, Math.min(last, t)); };
+    video.addEventListener('loadedmetadata', () => { video.currentTime = tail ? last : start; });
+    video.addEventListener('timeupdate', () => {
+      label.textContent = `成片 ${video.currentTime.toFixed(3)}s · 范围 ${start.toFixed(3)}–${end.toFixed(3)}s`;
+      if (video.currentTime >= end - 0.01) {
+        if (looping) { video.currentTime = start; video.play().catch(() => {}); }
+        else position(last);
+      }
+    });
+    video.addEventListener('seeking', () => {
+      if (video.currentTime < start - 0.002 || video.currentTime > last + 0.002) video.currentTime = Math.max(start, Math.min(last, video.currentTime));
+    });
+    players.push({ video, start, last });
+    grid.append(h('div', {}, h('b', {}, `${clip.id} · ${tail ? '尾部' : '头部'}`), video, label,
+      h('div', { class: 'review-actions' },
+        h('button', { class: 'pill sm', type: 'button', onclick: () => position(tail ? last : start) }, tail ? '尾帧' : '首帧'),
+        h('button', { class: 'pill sm', type: 'button', onclick: () => position(video.currentTime - 1 / fps) }, '上一帧'),
+        h('button', { class: 'pill sm', type: 'button', onclick: () => position(video.currentTime + 1 / fps) }, '下一帧'))));
+  });
+  const loop = h('button', { class: 'pill', type: 'button', 'aria-pressed': 'false', onclick: () => {
+    looping = !looping; loop.textContent = looping ? '停止循环' : '循环对照'; loop.setAttribute('aria-pressed', String(looping));
+    for (const {video, start} of players) { if (looping) { video.currentTime = start; video.play().catch(() => toast('视频尚未就绪，请再试')); } else video.pause(); }
+  } }, '循环对照');
+  dialog.append(grid, h('div', { class: 'review-actions' }, loop));
+  dialog.addEventListener('close', () => { players.forEach(({video}) => { video.pause(); video.removeAttribute('src'); video.load(); }); dialog.remove(); });
+  document.body.append(dialog); dialog.showModal();
 }
 
 /* ---------- 素材库 */
@@ -1580,6 +1723,7 @@ function closeLightbox() { const lb = $('#lightbox'); lb.hidden = true; lb.inner
 
 /* ---------- 键盘 */
 document.addEventListener('keydown', e => {
+  if (document.querySelector('.review-dialog[open]')) return;
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
   if (S.lb) { if (e.key === 'Escape') closeLightbox(); else if (e.key === 'ArrowLeft') $('#lightbox .nav-l')?.click(); else if (e.key === 'ArrowRight') $('#lightbox .nav-r')?.click(); return; }
   if (e.key === 'Escape') { if (S.draft) cancelDraft(); else closeAux(); return; }

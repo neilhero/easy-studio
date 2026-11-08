@@ -4,7 +4,7 @@
   只绑 127.0.0.1；只读项目目录，路径里带点的部分（.env、.claude）一律不发；
   每个请求校验 Host（防 DNS 重绑定）；写入（POST/PUT/DELETE）还要 Origin 是本机这个端口、POST/PUT 必须是 JSON——别的网页写不进来；
   反馈写进 反馈/待处理.md，截帧存 反馈/帧/；页面在同目录 studio.html。"""
-import argparse, base64, datetime, importlib.util, json, mimetypes, os, pathlib, re, sys, threading, urllib.parse, webbrowser
+import argparse, base64, hashlib, shutil, tempfile, datetime, importlib.util, json, mimetypes, os, pathlib, re, sys, threading, urllib.parse, webbrowser
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -27,6 +27,8 @@ PORT = 8787
 HEAD = ("# 待处理反馈\n\n> 放映室写入：哪个版本、第几秒、他说的话、截帧（同名 _s.jpg 是缩略图）。拷问时逐条读、问透后进需求文档；处理完的删掉那一行。\n\n"
         "| 时间 | 版本 | 时间码 | 你说的 | 帧 |\n|---|---|---|---|---|\n")
 _probe, _edl, _edl_lock = {}, {}, threading.Lock()
+REVIEW = "反馈/评审记录.json"
+_review_lock, _hashes = threading.RLock(), {}
 
 
 def find_root(start):
@@ -227,14 +229,228 @@ def api_segments():
         rows.append({"id": sid, "scene": row.get("节拍") or row.get("场", ""), "text": row.get("内容", ""), "dur": row.get("秒", ""),
                      "cells": {k: row.get(k, "") for k in COLS},
                      "json": blocks.get(sid), "files": fl})
-    counts = {c: sum(1 for r in rows if r["cells"][c] and "✗" not in r["cells"][c]) for c in COLS}
-    cand = 0
-    for r in rows:
-        m = re.search(r"候选\s*(\d+)", r["cells"]["生成"])
-        cand += int(m.group(1)) if m else (1 if r["cells"]["生成"] else 0)
+    state = review_read()
+    for row in rows:
+        entry = state["segments"].get(row["id"], {})
+        candidates = {c["path"]: c for c in row["files"]["candidates"]}
+        for path in entry.get("paths", []):
+            p = candidate_file(path, required=False)
+            if path not in candidates:
+                candidates[path] = fparts(p) if p else {"path": path, "name": pathlib.Path(path).name, "missing": True}
+        selected = entry.get("selected")
+        for path, c in candidates.items():
+            p = candidate_file(path, required=False)
+            c["fingerprint"] = file_hash(p) if p else None
+            record = entry.get("reviews", {}).get(path)
+            c["review"] = review_status(record, c["fingerprint"])
+            c["review_record"] = record
+            c["selected"] = bool(selected and selected["path"] == path)
+            c["selection_stale"] = bool(c["selected"] and selected["fingerprint"] != c["fingerprint"])
+        row["files"]["candidates"] = list(candidates.values())
+        chosen = candidates.get((selected or {}).get("path"))
+        row["cells"]["生成"] = f"候选 {len(candidates)}" + ("，已选用" if selected else "")
+        row["cells"]["过审"] = ("需复核" if chosen and chosen["selection_stale"] else chosen["review"]) if chosen else "待审"
+        row["cells"]["验收"] = "按版本验收"
+        row["review_entry"] = entry
+    counts = {c: sum(1 for r in rows if r["cells"][c] and not re.search(r"待|✗|退回|复核", r["cells"][c])) for c in COLS}
+    counts["过审"] = sum(r["cells"]["过审"] == "通过" for r in rows)
+    cand = sum(len(r["files"]["candidates"]) for r in rows)
     status = (f"{len(rows)} 段 · 脚本 {counts['脚本']} · 参考 {counts['参考']} · 生成 {counts['生成']}（候选 {cand}）"
-              f"· 过审 {counts['过审']} · 入片 {counts['入片']} · 验收 {counts['验收']}")
-    return {"found": True, "path": rel(f), "rows": rows, "status": status, "mtime": _mt(SEG), "gen": _newest(C.GEN)}
+              f"· 过审 {counts['过审']} · 入片 {counts['入片']} · 验收请选成片版本")
+    return {"found": True, "path": rel(f), "rows": rows, "status": status, "mtime": _mt(SEG), "gen": _newest(C.GEN),
+            "review_mtime": _mt(REVIEW), "library": _newest(C.LIB)}
+
+
+def file_hash(p):
+    if not p or not p.is_file():
+        return None
+    st = p.stat()
+    key = (str(p), st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    if key not in _hashes:
+        with p.open("rb") as stream:
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        _hashes[key] = digest.hexdigest()
+    return _hashes[key]
+
+
+def review_read():
+    p = safe(REVIEW)
+    if not p:
+        raise PermissionError("评审记录路径越界")
+    if not p.exists():
+        return {"schema": 1, "segments": {}, "history": []}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    if data.get("schema") != 1 or not isinstance(data.get("segments"), dict) or not isinstance(data.get("history"), list):
+        raise ValueError("评审记录格式不正确；已保留原文件")
+    return data
+
+
+def review_write(data):
+    p = safe(REVIEW)
+    if not p:
+        raise PermissionError("评审记录路径越界")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    # 只保留一份写入前备份；临时文件与目标在同一目录，替换是原子的。
+    if p.exists():
+        backup = safe(REVIEW + ".bak")
+        if not backup:
+            raise PermissionError("备份路径越界")
+        shutil.copyfile(p, backup)
+    fd, name = tempfile.mkstemp(prefix="review-", suffix=".tmp", dir=p.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(data, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, p)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def candidate_file(path, required=True):
+    p = safe(path) if isinstance(path, str) else None
+    if p and p.is_file() and kind(p) == "video" and any(p.is_relative_to(ROOT / d) for d in (C.GEN, C.LIB)):
+        return p
+    if required:
+        raise ValueError("候选必须是生成/或素材库/内的视频")
+    return None
+
+
+def review_status(record, fingerprint):
+    if not record:
+        return "待审"
+    if not fingerprint or record["fingerprint"] != fingerprint:
+        return "需复核"
+    return {"approved": "通过", "rejected": "退回", "pending": "待审"}[record["status"]]
+
+
+def api_candidates():
+    paths = {rel(p): p for d in (C.GEN, C.LIB) for p in walk(d) if candidate_file(rel(p), required=False)}
+    return {"items": [fparts(p) for _, p in sorted(paths.items())]}
+
+
+def segment_row(sid):
+    row = next((r for r in api_segments().get("rows", []) if r["id"] == sid), None)
+    if not row:
+        raise ValueError("分段表中没有这个镜头")
+    return row
+
+
+def review_context(sid, final_path):
+    row = segment_row(sid)
+    finals = {rel(p): (p, n) for p, n, _ in final_videos()}
+    if final_path not in finals:
+        raise ValueError("请选择实际存在的成片")
+    film, _ = finals[final_path]
+    timeline = api_timeline()
+    clips = timeline.get("V", [])
+    entry = row["review_entry"]
+    # 只接受明确的段号/节拍名称或已选素材匹配，不靠列表下标猜镜头。
+    matches = [c for c in clips if str(c["id"]) in {sid, row["scene"]}]
+    if not matches:
+        matches = [c for c in clips if c["src"] == (entry.get("selected") or {}).get("path")]
+    clip = matches[0] if len(matches) == 1 else None
+    binding = entry.get("bindings", {}).get(final_path)
+    confirmed = False
+    # 每个成片都要显式确认剪辑表对应关系；旧版也不能借用当前表直接批准。
+    result = {"segment": sid, "final": final_path, "clip": clip, "confirmed": confirmed,
+              "film_hash": file_hash(film), "status": "待审", "neighbors": [],
+              "reason": "" if clip else "剪辑表不能唯一匹配这一段，请核对镜头ID或节拍名称"}
+    if clip:
+        idx = clip["i"]
+        window = clips[max(0, idx - 1):idx + 2]
+        result["neighbors"] = window
+        start, end = window[0]["start"], window[-1]["start"] + window[-1]["dur"]
+        sources = {c["src"]: file_hash(safe(c["src"])) for c in window}
+        audio = [x for x in timeline.get("A", []) if x["start"] < end and x["start"] + x["dur"] > start]
+        sources.update({x["src"]: file_hash(safe(x["src"])) for x in audio})
+        snapshot = {"film": result["film_hash"], "clips": window, "sources": sources, "audio": audio,
+                    "subs": [x for x in timeline.get("subs", []) if x["start"] < end and x["end"] > start],
+                    "look": timeline.get("look"), "target_i": timeline.get("target_i"), "duck_db": timeline.get("duck_db"),
+                    "selected": entry.get("selected")}
+        result["signature"] = hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        confirmed = bool(binding and binding == {"film": result["film_hash"], "signature": result["signature"]})
+        result["confirmed"] = confirmed
+        records = entry.get("acceptances", [])
+        record = next((x for x in reversed(records) if x["final"] == final_path), None)
+        result["record"] = record
+        result["status"] = review_status({**record, "fingerprint": record["signature"]} if record else None, result["signature"])
+        if record and not confirmed:
+            result["status"] = "需复核"
+    return result
+
+
+def review_mutate(body):
+    if not isinstance(body, dict):
+        raise ValueError("请求必须是对象")
+    sid, action = body.get("segment"), body.get("action")
+    with _review_lock:
+        row = segment_row(sid)
+        state = review_read()
+        entry = state["segments"].setdefault(sid, {})
+        event = {"segment": sid, "action": action, "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+        if action in {"associate", "unlink", "select", "review"}:
+            path = body.get("path")
+            p = candidate_file(path, required=action != "unlink")
+            path = rel(p) if p else path
+            linked = [c["path"] for c in row["files"]["candidates"]]
+            fingerprint = file_hash(p)
+            if action != "associate" and path not in linked:
+                raise ValueError("请先关联候选")
+            if action in {"select", "review"} and body.get("fingerprint") != fingerprint:
+                raise ValueError("素材已变化，请刷新后再评审")
+            paths = entry.setdefault("paths", [])
+            if action == "associate":
+                if path not in paths:
+                    paths.append(path)
+            elif action == "unlink":
+                # 自动发现的生成目录候选仍会显示，不隐藏来源文件。
+                if path not in paths:
+                    raise ValueError("自动发现的候选不能解除关联；可将它退回")
+                paths.remove(path)
+                if (entry.get("selected") or {}).get("path") == path:
+                    entry.pop("selected", None)
+            elif action == "select":
+                entry["selected"] = {"path": path, "fingerprint": fingerprint}
+            else:
+                status, note = body.get("status"), str(body.get("note", "")).strip()[:4000]
+                if status not in {"approved", "rejected", "pending"}:
+                    raise ValueError("未知评审状态")
+                if status == "rejected" and not note:
+                    raise ValueError("请填写退回原因")
+                entry.setdefault("reviews", {})[path] = {"fingerprint": fingerprint, "status": status, "note": note, "at": event["at"]}
+                event.update(status=status, note=note)
+            event.update(path=path, fingerprint=fingerprint)
+        elif action in {"bind", "accept"}:
+            ctx = review_context(sid, body.get("final"))
+            if not ctx["clip"]:
+                raise ValueError(ctx["reason"])
+            if body.get("signature") != ctx["signature"]:
+                raise ValueError("成片或剪辑已变化，请刷新后重新核对")
+            if action == "bind":
+                entry.setdefault("bindings", {})[ctx["final"]] = {"film": ctx["film_hash"], "signature": ctx["signature"]}
+            else:
+                if not ctx["confirmed"]:
+                    raise ValueError("请先确认这份剪辑表对应所选成片")
+                status, note = body.get("status"), str(body.get("note", "")).strip()[:4000]
+                if status not in {"approved", "rejected", "pending"}:
+                    raise ValueError("未知验收状态")
+                if status == "rejected" and not note:
+                    raise ValueError("请填写退回原因")
+                # 成片验收不强制候选已通过：旧项目的选片记录可能尚未迁移，二者仍独立存储。
+                record = {"final": ctx["final"], "signature": ctx["signature"], "status": status, "note": note, "at": event["at"], "clip": ctx["clip"]}
+                entry.setdefault("acceptances", []).append(record)
+                event.update(status=status, note=note)
+            event.update(final=ctx["final"], signature=ctx["signature"])
+        else:
+            raise ValueError("未知操作")
+        state["history"].append(event)
+        review_write(state)
+    return {"ok": True}
+
 
 
 def api_library():
@@ -287,7 +503,8 @@ def load_edl():
     f = ROOT / EDL
     if not f.is_file():
         return None
-    key = f.stat().st_mtime
+    st = f.stat()
+    key = (str(f.resolve()), st.st_mtime_ns, st.st_size)
     with _edl_lock:
         if _edl.get("key") == key:
             return _edl["mod"]
@@ -447,7 +664,7 @@ def api_stat():
     fin = ROOT / "final"
     docs = {rel(p): round(p.stat().st_mtime, 3) for p in fin.glob("*.md")} if fin.is_dir() else {}
     return {"finals": finals_sig(), "docs": docs, "edl": _mt(EDL), "segments": _mt(SEG), "gen": _newest(C.GEN),
-            "feedback": _mt(FB), "library": _newest(C.LIB)}
+            "feedback": _mt(FB), "library": _newest(C.LIB), "review": _mt(REVIEW)}
 
 
 def save_frame(body):
@@ -606,6 +823,10 @@ class H(BaseHTTPRequestHandler):
                 return self._json(api_finals())
             if path == "/api/segments":
                 return self._json(api_segments())
+            if path == "/api/candidates":
+                return self._json(api_candidates())
+            if path == "/api/review-context":
+                return self._json(review_context(q.get("segment", [""])[0], q.get("final", [""])[0]))
             if path == "/api/library":
                 return self._json(api_library())
             if path == "/api/feedback":
@@ -621,6 +842,8 @@ class H(BaseHTTPRequestHandler):
                 p = safe(path[3:])
                 return self._file(p) if p and p.is_file() else self._text("没有这个文件", 404)
             self._text("没有这个地址", 404)
+        except ValueError as e:
+            self._text(str(e), 400)
         except PermissionError as e:
             self._text(f"拒绝：{e}", 403)
         except Exception as e:
@@ -631,11 +854,15 @@ class H(BaseHTTPRequestHandler):
             return
         u = urllib.parse.urlsplit(self.path)
         try:
+            if u.path == "/api/review":
+                return self._json(review_mutate(self._body()))
             if u.path == "/api/frame":
                 return self._json(save_frame(self._body()))
             if u.path == "/api/feedback":
                 return self._json(append_feedback(self._body()))
             self._text("没有这个地址", 404)
+        except ValueError as e:
+            self._text(str(e), 400)
         except PermissionError as e:
             self._text(f"拒绝：{e}", 403)
         except Exception as e:
@@ -649,6 +876,8 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/feedback":
                 return self._json(fb_update(self._body()))
             self._text("没有这个地址", 404)
+        except ValueError as e:
+            self._text(str(e), 400)
         except PermissionError as e:
             self._text(f"拒绝：{e}", 403)
         except Exception as e:
@@ -664,6 +893,8 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/feedback":
                 return self._json(fb_delete(urllib.parse.parse_qs(u.query)))
             self._text("没有这个地址", 404)
+        except ValueError as e:
+            self._text(str(e), 400)
         except PermissionError as e:
             self._text(f"拒绝：{e}", 403)
         except Exception as e:
