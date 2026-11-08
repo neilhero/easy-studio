@@ -860,11 +860,12 @@ body { -webkit-font-smoothing:antialiased; }
 
 /* 素材库：筛选同高同边框，镜头卡片共用固定比例的预览区。 */
 #v-library .head .actions { align-items:center; }
-#v-library .head .actions :is(.pill,.select), #libCats > button { height:32px; min-height:32px; box-sizing:border-box; }
-#libCats { height:32px; padding:0; gap:6px; background:transparent; flex-wrap:nowrap; }
-#libCats > button { padding:0 12px; border:1px solid var(--line-2); border-radius:10px; background:var(--island); }
-#libCats > button:hover { border-color:var(--acc); }
-#libCats > button[aria-pressed="true"] { border-color:var(--acc); background:var(--acc-soft); color:var(--acc); box-shadow:none; }
+#v-library .head .actions :is(.pill,.select) { height:32px; min-height:32px; box-sizing:border-box; }
+#libCats { height:32px; padding:2px; gap:2px; border:1px solid var(--line-2); background:var(--island); border-radius:10px; flex-wrap:nowrap; max-width:100%; overflow-x:auto; box-sizing:border-box; }
+#libCats > button { height:26px; min-height:26px; padding:0 12px; border:0; border-radius:7px; background:transparent; flex-shrink:0; }
+#libCats > button:hover { background:var(--island-2); }
+#libCats > button:focus-visible { outline-offset:-2px; }
+#libCats > button[aria-pressed="true"] { background:var(--acc-soft); color:var(--acc); box-shadow:none; }
 #libBody .grid.lib.shot-previews { aspect-ratio:16/9; grid-template-columns:repeat(var(--preview-cols),minmax(0,1fr)); grid-template-rows:repeat(var(--preview-rows),minmax(0,1fr)); align-items:center; }
 #libBody .shot-previews .pic { aspect-ratio:16/9; min-width:0; min-height:0; max-height:100%; }
 #libBody .shot-previews .pic :is(img,video) { aspect-ratio:auto; height:100%; }
@@ -1045,7 +1046,7 @@ function renderWatch() {
   if (!vids.length) {
     v.append(h('div', { class: 'head' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, S.proj.name), h('span', { class: 'sub' }, 'final/'))));
     v.append(h('div', { class: 'empty' }, h('div', { class: 'h' }, 'final/ 里还没有成片'), h('p', {}, '剪辑总装出成片后，这里就能看、能逐帧、能打反馈。')));
-    v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪 · v0.4.1'));
+    v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪 · v0.4.2'));
     return;
   }
   S.groups = groupVersions(vids);
@@ -1850,7 +1851,7 @@ async function openEditor() {
       } catch (e) { jobs.textContent = e.message; }
     }
     const close = () => { if (!dirty || confirm('放弃尚未保存的修改？')) dialog.close(); };
-    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '初剪编辑 · v0.4.1'), h('button', { class: 'pill sm', onclick: close }, '关闭')), h('p', { class: 's t3' }, '基础顺序剪辑，导出为首镜尺寸、25fps、H.264/AAC。音量0为静音，1为原音量。不会自动沿用外部配乐、字幕、调色和特效。同步已选候选会用完整素材替换对应镜头，请重新核对入出点。'), preview, trimBar);
+    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '初剪编辑 · v0.4.2'), h('button', { class: 'pill sm', onclick: close }, '关闭')), h('p', { class: 's t3' }, '基础顺序剪辑，导出为首镜尺寸、25fps、H.264/AAC。音量0为静音，1为原音量。不会自动沿用外部配乐、字幕、调色和特效。同步已选候选会用完整素材替换对应镜头，请重新核对入出点。'), preview, trimBar);
     const toolbar = h('div', { class: 'review-actions' });
     [['import', '导入原剪辑'], ['selected', '同步已选候选'], ['save', '保存草稿'], ['undo', '撤销已保存修改'], ['redo', '重做']].forEach(([kind, text]) => toolbar.append(h('button', { class: 'pill sm', onclick: () => action(kind) }, text)));
     toolbar.append(h('button', { class: 'pill sm', onclick: () => { if (!candidates.length) return toast('请先导入素材', 'bad'); state.clips.push({ id: '镜头-' + Date.now(), src: candidates[0].path, in: 0, out: 1, a: 1 }); changed(); draw(); } }, '添加镜头'), h('button', { class: 'pill sm', onclick: async () => {
@@ -1879,7 +1880,7 @@ function tlRenderHead() {
       h('button', { class: 'pill sm', type: 'button', title: '整条放进一屏', onclick: () => tlSetPps(TL.fit, 0, $('#tlRuler').offsetLeft) }, '整条'),
       h('span', { class: 'xs t3', id: 'tlWin' }, tlWindowText()));
   }
-  hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑 · v0.4.1'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
+  hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑 · v0.4.2'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
   hd.append(h('span', { class: 'sp' }));
   if (has) {
     if (S.cur && !S.cur.current && !d.exported) hd.append(h('span', { class: 'badge warn', title: '剪辑表只有一份，对应最新的成片' }, '时间线是当前剪辑表的，不是这一版'));
