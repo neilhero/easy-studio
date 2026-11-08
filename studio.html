@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -788,6 +788,76 @@ details.rec[open] > summary { margin-bottom: 8px; }
 .review-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:16px; }
 .review-pair video { width:100%; aspect-ratio:16/9; background:#000; object-fit:contain; }
 @media(max-width:720px) { .review-pair { grid-template-columns:1fr; } }
+/* v0.4 · 浅色浮岛：统一信息层级与操作密度。 */
+:root { --surface-shadow:0 8px 28px rgba(17,24,39,.055); --fs-title:24px; --lh-title:32px; --content-pad:40px; }
+:root[data-theme="light"] { --bg:#f2f4f8; --island:#fff; --island-2:#f6f7fb; --island-3:#eaf0f9; --line:#e1e6ef; --line-2:#ced6e3; --text:#202939; --t2:#546278; --t3:#69768a; --acc:#5265d9; --acc-soft:rgba(82,101,217,.09); }
+body { -webkit-font-smoothing:antialiased; }
+.island { box-shadow:var(--surface-shadow); border:1px solid var(--line); }
+.nav { border-radius:22px; }
+.nav .brand b { letter-spacing:-.06em; font-size:17px; }
+.nav .brand span { letter-spacing:.08em; font-size:9px; text-transform:uppercase; }
+.nav .i { height:42px; transition:background .18s,color .18s; }
+.nav .i[aria-current] { background:var(--acc-soft); color:var(--acc); box-shadow:inset 3px 0 var(--acc); }
+.content { padding-top:28px; }
+.head { align-items:center; flex-wrap:wrap; gap:18px; margin-bottom:28px; }
+.head .title-row { gap:14px; }
+.title { letter-spacing:-.035em; font-weight:650; }
+.head .sub { padding:4px 9px; background:var(--island); border:1px solid var(--line); border-radius:8px; font-size:11px; font-variant-numeric:tabular-nums; }
+.head .actions { flex-wrap:wrap; }
+.pill, .select { min-height:32px; border-radius:10px; }
+.pill.sm { min-height:29px; padding-inline:12px; }
+.pill:hover:not(:disabled) { border-color:var(--acc); background:var(--acc-soft); }
+.pill.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
+.pill.primary:hover { filter:brightness(1.08); }
+.seg { padding:3px; background:var(--island-3); border-radius:11px; }
+.seg button { border-radius:8px; min-height:28px; }
+.search { height:36px; border-radius:11px; background:var(--island); border-color:var(--line-2); transition:border-color .18s,box-shadow .18s; }
+.search:focus-within { box-shadow:0 0 0 3px var(--acc-soft); }
+:where(button,input,select,textarea,summary):focus-visible { outline:2px solid var(--acc); outline-offset:3px; }
+.aux .aux-scroll { padding:28px 24px; }
+.aux-h b { font-size:15px; letter-spacing:-.02em; }
+.lib-aux video, .lib-aux img { border-radius:13px; }
+#libBody .section { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr)); gap:16px; }
+#libBody .section-h { grid-column:1/-1; margin-bottom:2px; font-size:17px; letter-spacing:-.02em; }
+#libBody .section-h .n { padding:2px 7px; border-radius:6px; background:var(--island-3); }
+#libBody .lib-group { padding:14px; margin:0; align-self:start; min-width:0; background:var(--island); border:1px solid var(--line); border-radius:16px; box-shadow:var(--surface-shadow); }
+#libBody .lib-group .gh { margin-bottom:12px; font-size:13px; }
+#libBody .grid.lib { grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; }
+#libBody .pic { width:100%; border-radius:10px; overflow:hidden; outline:2px solid transparent; outline-offset:2px; transition:outline-color .18s,transform .18s; }
+#libBody .pic:hover { transform:translateY(-2px); }
+#libBody .pic[aria-selected="true"] { outline-color:var(--acc); }
+#libBody .pic img,#libBody .pic video { width:100%; object-fit:cover; aspect-ratio:16/10; }
+#libBody .pic .cap { font-size:10px; background:linear-gradient(transparent,rgba(10,18,30,.8)); padding:18px 8px 8px; }
+.table-wrap { background:var(--island); border:1px solid var(--line); border-radius:15px; padding:14px; box-shadow:var(--surface-shadow); }
+.table th { padding-block:12px; letter-spacing:.03em; }
+.table td { padding-block:15px; }
+.badge { border-radius:6px; padding:3px 7px; font-size:11px; }
+.watch-preview { border:1px solid var(--line-2); box-shadow:0 12px 38px rgba(10,18,32,.12); }
+.tlb { margin-top:18px; padding:12px; border:1px solid var(--line); background:var(--island); border-radius:15px; }
+.review-dialog { padding:28px; border-radius:22px; box-shadow:0 28px 100px rgba(20,30,50,.25); }
+.review-dialog::backdrop { background:rgba(25,35,55,.4); backdrop-filter:blur(5px); }
+.review-dialog > .review-actions:first-child { margin:0 0 18px; justify-content:space-between; align-items:center; }
+.review-dialog > .review-actions:first-child b { font-size:20px; letter-spacing:-.03em; }
+.review-dialog :is(input:not([type=checkbox]):not([type=range]),select) { background:var(--island-2); border:1px solid var(--line-2); border-radius:8px; padding:6px 9px; color:var(--text); font:inherit; }
+.review-actions { gap:8px; margin-block:12px; }
+.review-box { border:1px solid var(--line); padding:16px; background:var(--island-2); }
+.upscale-sources { max-height:200px; overflow:auto; margin-block:12px; border:1px solid var(--line); border-radius:12px; padding:6px; }
+.upscale-source { display:flex; gap:10px; padding:8px; align-items:center; font-size:12px; overflow-wrap:anywhere; }
+.upscale-source:hover { background:var(--acc-soft); border-radius:7px; }
+.upscale-source input { accent-color:var(--acc); }
+.task-card { padding:18px; border:1px solid var(--line); background:var(--island-2); border-radius:14px; margin-block:12px; }
+.task-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; overflow-wrap:anywhere; }
+.task-card progress { width:100%; height:6px; border:0; border-radius:8px; accent-color:var(--acc); }
+.task-card p { margin-block:10px; }
+.task-card .err { white-space:pre-wrap; overflow-wrap:anywhere; }
+.compare-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.compare-grid video { border-radius:12px; }
+.upscale-dialog details summary { cursor:pointer; font-size:13px; font-weight:600; padding-block:10px; }
+.empty { border:1px dashed var(--line-2); border-radius:18px; background:var(--island-2); padding:32px 20px; }
+@media(max-width:960px) { .head .actions { flex:1 1 100%; } .head .search { flex:1; min-width:130px; } }
+@media(max-width:720px) { .content { padding-top:20px; } .review-dialog { padding:18px; } .compare-grid { grid-template-columns:1fr; } .task-heading { align-items:flex-start; flex-direction:column; } .head .title { font-size:22px; } #libBody .section { grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr)); } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
+
 </style>
 </head>
 <body>
@@ -965,7 +1035,7 @@ function renderWatch() {
   if (!vids.length) {
     v.append(h('div', { class: 'head' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, S.proj.name), h('span', { class: 'sub' }, 'final/'))));
     v.append(h('div', { class: 'empty' }, h('div', { class: 'h' }, 'final/ 里还没有成片'), h('p', {}, '剪辑总装出成片后，这里就能看、能逐帧、能打反馈。')));
-    v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪 · v0.3.1'));
+    v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪 · v0.4.0'));
     return;
   }
   S.groups = groupVersions(vids);
@@ -1535,7 +1605,7 @@ async function renderLibrary(force) {
     renderLibraryBody();
   } }, ...[['asc', '序号升序 ↑'], ['desc', '序号降序 ↓']].map(([value, label]) => h('option', { value, selected: libSortMode() === value }, label)));
   v.append(h('div', { class: 'head', style: 'margin-bottom:20px' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, '素材库'), h('span', { class: 'sub' }, S.lib.found ? `${all.length} 个文件` : '素材库/')),
-    h('div', { class: 'actions', style: 'align-items:center;flex-wrap:wrap' }, search, sort, h('div', { class: 'seg', id: 'libCats' }, ...['全部', ...cats].map(c => h('button', { type: 'button', 'aria-pressed': S.libCat === c ? 'true' : 'false', onclick: () => { S.libCat = c; $$('#libCats button').forEach(b => b.setAttribute('aria-pressed', b.textContent === c ? 'true' : 'false')); renderLibraryBody(); } }, c))), h('button', { class: 'pill sm', type: 'button', onclick: () => renderLibrary(true) }, '刷新'))));
+    h('div', { class: 'actions', style: 'align-items:center;flex-wrap:wrap' }, search, sort, h('button', { class: 'pill sm', onclick: openUpscale }, '超分工作台'), h('div', { class: 'seg', id: 'libCats' }, ...['全部', ...cats].map(c => h('button', { type: 'button', 'aria-pressed': S.libCat === c ? 'true' : 'false', onclick: () => { S.libCat = c; $$('#libCats button').forEach(b => b.setAttribute('aria-pressed', b.textContent === c ? 'true' : 'false')); renderLibraryBody(); } }, c))), h('button', { class: 'pill sm', type: 'button', onclick: () => renderLibrary(true) }, '刷新'))));
   v.append(h('div', { id: 'libBody' }));
   renderLibraryBody(); renderAuxLibrary();
 }
@@ -1596,6 +1666,63 @@ function tlInit() {
   tlRenderHead(); tlDraw(); TL.ensure = true; tlTime($('#video')?.currentTime || 0);
 }
 /* v0.3：草稿独立于当前审片时间线，只有导出后成为新成片。 */
+async function openUpscale() {
+  try {
+    const dialog = h('dialog', { class: 'review-dialog upscale-dialog', 'aria-label': '超分工作台' });
+    const sources = (await api('/api/candidates')).items.filter(x => !x.path.startsWith('素材库/Studio超分/'));
+    const selected = new Set();
+    const queue = h('div', { class: 'upscale-queue' }), notice = h('p', { class: 's t3' });
+    const checks = h('div', { class: 'upscale-sources' });
+    sources.sort((a,b) => libNaturalOrder.compare(a.path,b.path)).forEach(x => checks.append(h('label', { class: 'upscale-source' }, h('input', { type: 'checkbox', onchange: e => e.target.checked ? selected.add(x.path) : selected.delete(x.path) }), h('span', {}, x.path))));
+    const scale = h('select', { 'aria-label': '超分倍率', class: 'select' }, h('option', { value: '2' }, '模型 2×'), h('option', { value: '3' }, '模型 3×'));
+    const height = h('select', { 'aria-label': '目标高度', class: 'select' }, ...[720,1080,1440,2160].map(n => h('option', { value: String(n), selected: n === 1080 }, n + 'p')));
+    async function refresh() {
+      try {
+        const data = await api('/api/upscale');
+        notice.textContent = data.configuration.ready ? '本机工具已就绪 · 串行执行 · 原片保留 · 完成后需人工审片' : data.configuration.reason;
+        queue.replaceChildren();
+        if (!data.jobs.length) queue.append(h('p', { class: 's t3' }, '暂无任务。选择视频后加入队列。'));
+        data.jobs.forEach(j => {
+          const card = h('div', { class: 'task-card' });
+          card.append(h('div', { class: 'task-heading' }, h('b', {}, j.source.split('/').pop()), h('span', { class: 'badge ' + (j.status === 'completed' ? 'ok' : j.status === 'failed' ? 'bad' : 'neutral') }, j.stage)), h('p', { class: 's t3' }, `${j.scale}× → ${j.height}p · ${j.frames_done}/${j.frames || '—'} 帧 · 已用 ${j.elapsed}s${j.eta != null ? ' · 超分阶段剩余约 ' + j.eta + 's' : ''}${j.estimated_disk_bytes ? ' · 临时空间估算 ' + (j.estimated_disk_bytes/1073741824).toFixed(2) + ' GB' : ''}`));
+          card.append(h('progress', { max: String(j.frames || 1), value: String(j.frames_done) }));
+          if (j.error) card.append(h('p', { class: 's err' }, j.error));
+          const buttons = h('div', { class: 'review-actions' });
+          if (j.status === 'completed') buttons.append(h('button', { class: 'pill sm', onclick: () => compareUpscale(j.id) }, '原片 / 超分对照'));
+          else buttons.append(h('button', { class: 'pill sm', onclick: async () => { try { await post(['queued','running'].includes(j.status) ? '/api/upscale/cancel' : '/api/upscale', ['queued','running'].includes(j.status) ? {id:j.id} : {retry:j.id}); await refresh(); } catch(e) { toast(e.message,'bad'); } } }, ['queued','running'].includes(j.status) ? '取消任务' : '重试此文件'));
+          card.append(buttons); queue.append(card);
+        });
+      } catch(e) { notice.textContent = e.message; }
+    }
+    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '超分工作台'), h('button', { class: 'pill sm', onclick: () => dialog.close() }, '关闭')), notice,
+      h('details', { open: true }, h('summary', {}, '选择原片 · 最多100条'), checks),
+      h('div', { class: 'review-actions' }, scale, height, h('button', { class: 'pill primary', onclick: async () => { try { const r = await post('/api/upscale', {paths:[...selected],scale:Number(scale.value),height:Number(height.value)}); toast(`已登记 ${r.jobs.length} 条；相同内容与参数的有效结果会复用`); await refresh(); } catch(e) {toast(e.message,'bad');} } }, '加入超分队列')), queue);
+    const timer = setInterval(refresh,2000);
+    dialog.addEventListener('close', () => {clearInterval(timer);dialog.remove();});
+    document.body.append(dialog); dialog.showModal(); await refresh();
+  } catch(e) {toast(e.message,'bad');}
+}
+async function compareUpscale(id) {
+  try {
+    const data = await api('/api/upscale-compare?id=' + encodeURIComponent(id));
+    const dialog = h('dialog', {class:'review-dialog', 'aria-label':'原片与超分对照'});
+    const players = [data.source,data.output].map(path => h('video',{src:fileUrl(path),preload:'auto',style:'width:100%;background:#10141e',muted:true}));
+    let playing = false, timer;
+    const time = h('input',{type:'range',min:'0',max:'1',step:'0.001',value:'0','aria-label':'对照时间',oninput:e=>{players.forEach(v=>{v.pause();v.currentTime=Number(e.target.value);});playing=false;}});
+    const pause = () => {playing=false;players.forEach(v=>v.pause());};
+    players[0].addEventListener('loadedmetadata',()=>{time.max=String(players[0].duration);});
+    players[0].addEventListener('ended',pause);
+    timer=setInterval(()=>{if(playing){const [a,b]=players;if(Math.abs(a.currentTime-b.currentTime)>.08)b.currentTime=a.currentTime;time.value=String(a.currentTime);}},100);
+    dialog.append(h('div',{class:'review-actions'},h('b',{},'原片 / 超分 · 同步对照'),h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),
+      h('div',{class:'compare-grid'},...players.map((v,i)=>h('div',{},h('p',{class:'s t3'},i?'超分结果':'原片'),v))),
+      h('div',{class:'review-actions'},h('button',{class:'pill sm',onclick:async()=>{if(playing)return pause();try{await Promise.all(players.map(v=>v.play()));playing=true;}catch(e){pause();toast('视频尚未就绪','bad');}}},'播放 / 暂停'),
+      ...[-1,1].map(d=>h('button',{class:'pill sm',onclick:()=>{pause();const t=Math.min(players[0].duration,Math.max(0,players[0].currentTime+d/data.fps));players.forEach(v=>v.currentTime=t);time.value=String(t);}},d<0?'前一帧':'后一帧')),
+      h('label',{},h('input',{type:'checkbox',onchange:e=>players[1].muted=!e.target.checked}),'试听超分原声')),time);
+    dialog.addEventListener('close',()=>{clearInterval(timer);players.forEach(v=>{v.pause();v.removeAttribute('src');v.load();});dialog.remove();});
+    document.body.append(dialog);dialog.showModal();
+  } catch(e){toast(e.message,'bad');}
+}
+
 async function openIssues() {
   try {
     const dialog = h('dialog', { class: 'review-dialog', 'aria-label': '返修问题' });
@@ -1711,7 +1838,7 @@ async function openEditor() {
       } catch (e) { jobs.textContent = e.message; }
     }
     const close = () => { if (!dirty || confirm('放弃尚未保存的修改？')) dialog.close(); };
-    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '初剪编辑 · v0.3.1'), h('button', { class: 'pill sm', onclick: close }, '关闭')), h('p', { class: 's t3' }, '基础顺序剪辑，导出为首镜尺寸、25fps、H.264/AAC。音量0为静音，1为原音量。不会自动沿用外部配乐、字幕、调色和特效。同步已选候选会用完整素材替换对应镜头，请重新核对入出点。'), preview, trimBar);
+    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '初剪编辑 · v0.4.0'), h('button', { class: 'pill sm', onclick: close }, '关闭')), h('p', { class: 's t3' }, '基础顺序剪辑，导出为首镜尺寸、25fps、H.264/AAC。音量0为静音，1为原音量。不会自动沿用外部配乐、字幕、调色和特效。同步已选候选会用完整素材替换对应镜头，请重新核对入出点。'), preview, trimBar);
     const toolbar = h('div', { class: 'review-actions' });
     [['import', '导入原剪辑'], ['selected', '同步已选候选'], ['save', '保存草稿'], ['undo', '撤销已保存修改'], ['redo', '重做']].forEach(([kind, text]) => toolbar.append(h('button', { class: 'pill sm', onclick: () => action(kind) }, text)));
     toolbar.append(h('button', { class: 'pill sm', onclick: () => { if (!candidates.length) return toast('请先导入素材', 'bad'); state.clips.push({ id: '镜头-' + Date.now(), src: candidates[0].path, in: 0, out: 1, a: 1 }); changed(); draw(); } }, '添加镜头'), h('button', { class: 'pill sm', onclick: async () => {
@@ -1740,7 +1867,7 @@ function tlRenderHead() {
       h('button', { class: 'pill sm', type: 'button', title: '整条放进一屏', onclick: () => tlSetPps(TL.fit, 0, $('#tlRuler').offsetLeft) }, '整条'),
       h('span', { class: 'xs t3', id: 'tlWin' }, tlWindowText()));
   }
-  hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑 · v0.3.1'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
+  hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑 · v0.4.0'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
   hd.append(h('span', { class: 'sp' }));
   if (has) {
     if (S.cur && !S.cur.current && !d.exported) hd.append(h('span', { class: 'badge warn', title: '剪辑表只有一份，对应最新的成片' }, '时间线是当前剪辑表的，不是这一版'));

@@ -174,7 +174,7 @@ class ReviewTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as error:
                 request(url, "../outside.mp4")
             self.assertEqual(error.exception.code, 400)
-            for endpoint in ('/api/edit', '/api/export', '/api/export/cancel', '/api/issues'):
+            for endpoint in ('/api/edit', '/api/export', '/api/export/cancel', '/api/upscale', '/api/upscale/cancel', '/api/issues'):
                 req = urllib.request.Request(url + endpoint, data=b'{}', headers={'Content-Type': 'application/json', 'Origin': 'https://other.example'})
                 with self.assertRaises(urllib.error.HTTPError) as error:
                     urllib.request.urlopen(req, timeout=3)

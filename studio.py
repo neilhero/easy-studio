@@ -12,6 +12,7 @@ sys.path.insert(0, str(HERE))
 from common import ffprobe
 import common as C
 import editing
+import upscaling
 
 VERSION = (HERE / "VERSION").read_text(encoding="utf-8").strip()
 ROOT = pathlib.Path.cwd()
@@ -827,6 +828,10 @@ class H(BaseHTTPRequestHandler):
                 return
             if path == "/api/issue-location":
                 return self._json(editing.issue_location(sys.modules[__name__], q.get("id", [""])[0], q.get("final", [""])[0]))
+            if path == "/api/upscale-compare":
+                return self._json(upscaling.comparison(sys.modules[__name__], q.get("id", [""])[0]))
+            if path == "/api/upscale":
+                return self._json(upscaling.status(sys.modules[__name__]))
             if path == "/api/issues":
                 return self._json(editing.issues(sys.modules[__name__]))
             if path == "/api/edit":
@@ -872,6 +877,10 @@ class H(BaseHTTPRequestHandler):
             return
         u = urllib.parse.urlsplit(self.path)
         try:
+            if u.path == "/api/upscale":
+                return self._json(upscaling.submit(sys.modules[__name__], self._body()))
+            if u.path == "/api/upscale/cancel":
+                return self._json(upscaling.cancel(sys.modules[__name__], self._body()))
             if u.path == "/api/issues":
                 return self._json(editing.issues(sys.modules[__name__], self._body()))
             if u.path == "/api/edit":
