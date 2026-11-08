@@ -14,8 +14,11 @@ import common as C
 import editing
 import upscaling
 import quality
+import agent_api
+import hmac
 
 VERSION = (HERE / "VERSION").read_text(encoding="utf-8").strip()
+IMPORT_ROOTS = []
 ROOT = pathlib.Path.cwd()
 VIDEO = {".mp4", ".mov", ".webm", ".m4v"}
 IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -831,6 +834,11 @@ class H(BaseHTTPRequestHandler):
                 return self._json(editing.issue_location(sys.modules[__name__], q.get("id", [""])[0], q.get("final", [""])[0]))
             if path == "/api/upscale-compare":
                 return self._json(upscaling.comparison(sys.modules[__name__], q.get("id", [""])[0]))
+            if path == "/api/agent/project":
+                if not self._agent_guard(): return
+                return self._json(agent_api.project(sys.modules[__name__]))
+            if path == "/api/tasks":
+                return self._json(agent_api.dispatch(sys.modules[__name__], {"operation":"tasks.list","arguments":{"limit":200}})["result"])
             if path == "/api/quality":
                 return self._json(quality.read(sys.modules[__name__]))
             if path == "/api/quality-context":
@@ -879,7 +887,30 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             self._text(f"出错：{e}", 500)
 
+    def _agent_guard(self):
+        if not self._host_ok():
+            self._text("只允许本机Host",403)
+            return False
+        if self.headers.get('Origin'):
+            self._text("智能体入口不接受浏览器Origin",403)
+            return False
+        value=self.headers.get('Authorization','')
+        if not hmac.compare_digest(value,'Bearer '+agent_api.token(sys.modules[__name__])):
+            self._text("智能体令牌无效",403)
+            return False
+        return True
+
     def do_POST(self):
+        with agent_api.LOCK:
+            return self._dispatch_post()
+
+    def _dispatch_post(self):
+        if urllib.parse.urlsplit(self.path).path == '/api/agent/call':
+            if not self._agent_guard(): return
+            try: return self._json(agent_api.dispatch(sys.modules[__name__],self._body()))
+            except ValueError as e: return self._text(str(e),400)
+            except PermissionError as e: return self._text(str(e),403)
+            except Exception as e: return self._text(str(e),500)
         if not self._guard(write=True):
             return
         u = urllib.parse.urlsplit(self.path)
@@ -915,6 +946,10 @@ class H(BaseHTTPRequestHandler):
             self._text(f"出错：{e}", 500)
 
     def do_PUT(self):
+        with agent_api.LOCK:
+            return self._dispatch_put()
+
+    def _dispatch_put(self):
         if not self._guard(write=True):
             return
         u = urllib.parse.urlsplit(self.path)
@@ -930,6 +965,10 @@ class H(BaseHTTPRequestHandler):
             self._text(f"出错：{e}", 500)
 
     def do_DELETE(self):
+        with agent_api.LOCK:
+            return self._dispatch_delete()
+
+    def _dispatch_delete(self):
         if not self._guard(write=True):
             return
         u = urllib.parse.urlsplit(self.path)
@@ -948,14 +987,21 @@ class H(BaseHTTPRequestHandler):
 
 
 def main():
-    global ROOT, PORT
+    global ROOT, PORT, IMPORT_ROOTS
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--root", help="项目根目录，默认从当前目录往上找")
+    ap.add_argument("--import-root", action="append", default=[], help="允许智能体导入媒体的目录，可重复指定")
     ap.add_argument("--open", action="store_true", help="启动后在浏览器里打开")
     a = ap.parse_args()
     ROOT = pathlib.Path(a.root).resolve() if a.root else find_root(os.getcwd())
     PORT = a.port
+    IMPORT_ROOTS = [pathlib.Path(p).resolve() for p in a.import_root]
+    try:
+        service_lock = agent_api.acquire_service_lock(sys.modules[__name__])
+        agent_api.token(sys.modules[__name__])
+    except ValueError as e:
+        sys.exit(str(e))
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", a.port), H)
     except OSError as e:

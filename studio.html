@@ -890,6 +890,7 @@ body { -webkit-font-smoothing:antialiased; }
     <button class="i" type="button" data-view="progress" title="进度"><span class="ic"></span><span class="l">进度</span></button>
     <button class="i" type="button" data-view="library" title="素材库"><span class="ic"></span><span class="l">素材库</span></button>
     <button class="i" type="button" id="qualityBtn" title="连戏与质检"><span class="ic"></span><span class="l">质检</span></button>
+    <button class="i" type="button" id="tasksBtn" title="统一任务"><span class="ic"></span><span class="l">任务</span></button>
     <span class="sp"></span>
     <button class="i drawerbtn" type="button" id="drawerBtn" title="打开面板" aria-pressed="false"><span class="ic"></span><span class="l">面板</span></button>
     <button class="i navtoggle" type="button" id="navToggle" title="展开导航"><span class="ic"></span><span class="l">收起</span></button>
@@ -955,7 +956,7 @@ const ICON = {
   expand: svg('<path d="m6 6 6 6-6 6M13 6l6 6-6 6"/>'), collapse: svg('<path d="m18 6-6 6 6 6M11 6l-6 6 6 6"/>'),
   pen: svg('<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="m12.5 7.5 4 4"/>'), minus: svg('<path d="M5 12h14"/>'), plus: svg('<path d="M12 5v14M5 12h14"/>'), refresh: svg('<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'),
 };
-$$('.nav .i').forEach(b => { const v = b.dataset.view; b.querySelector('.ic').innerHTML = ICON[{ watch: 'film', progress: 'table', library: 'grid' }[v] || { drawerBtn: 'panel', navToggle: 'expand', theme: 'moon', qualityBtn: 'table' }[b.id]]; });
+$$('.nav .i').forEach(b => { const v = b.dataset.view; b.querySelector('.ic').innerHTML = ICON[{ watch: 'film', progress: 'table', library: 'grid' }[v] || { drawerBtn: 'panel', navToggle: 'expand', theme: 'moon', qualityBtn: 'table', tasksBtn: 'table' }[b.id]]; });
 
 const S = { view: 'watch', proj: null, finals: { videos: [], docs: [] }, cur: null, cmp: { mode: 'off', alt: null, offset: 0, audio: 'cur', blinkOn: false }, markers: [], draft: null,
   auxTab: 'marks', fbPath: '反馈/待处理.md', editing: null, segs: null, selSeg: null, lib: null, selLib: null, libCat: '全部', doc: null, docPath: null, lb: null };
@@ -1691,6 +1692,22 @@ function tlInit() {
   tlRenderHead(); tlDraw(); TL.ensure = true; tlTime($('#video')?.currentTime || 0);
 }
 /* v0.3：草稿独立于当前审片时间线，只有导出后成为新成片。 */
+$('#tasksBtn').addEventListener('click', async () => {
+  const dialog = h('dialog',{class:'review-dialog','aria-label':'统一任务'});
+  const body = h('div');
+  const labels = {queued:'排队',running:'执行中',succeeded:'执行成功',failed:'失败',cancelled:'已取消',interrupted:'已中断'};
+  async function refresh() {
+    try {
+      const data=await api('/api/tasks');body.replaceChildren();
+      if(!data.items.length)body.append(h('p',{class:'s t3'},'暂无任务。网页与智能体创建的质检、超分和导出会汇总到这里。'));
+      data.items.forEach(t=>body.append(h('div',{class:'task-card'},h('div',{class:'task-heading'},h('b',{},({export:'初剪导出',upscale:'超分',quality:'技术质检'})[t.kind]),h('span',{class:'badge'},labels[t.status] || t.status)),h('p',{class:'s t3'},t.progress.final || t.progress.source || t.progress.path || t.id),h('p',{class:'xs t3'},'任务ID：'+t.id),h('p',{class:'s'},t.error || t.progress.stage || ('执行状态与内容过审分别记录')), ...t.outputs.map(path=>h('a',{href:fileUrl(path),target:'_blank',class:'s'},path)))));
+    }catch(e){body.textContent=e.message;}
+  }
+  dialog.append(h('div',{class:'review-actions'},h('b',{},'统一任务'),h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),body);
+  const timer=setInterval(refresh,2000);dialog.addEventListener('close',()=>{clearInterval(timer);dialog.remove();});
+  document.body.append(dialog);dialog.showModal();await refresh();
+});
+
 $('#qualityBtn').addEventListener('click', openQuality);
 
 async function openQuality() {

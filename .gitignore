@@ -18,3 +18,5 @@ final/
 *.wav
 *.mp3
 *.m4a
+
+.studio/
