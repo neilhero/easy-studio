@@ -197,7 +197,7 @@ button.chip, button.check, button.opt, button.mi, button.i, button.ly, button.oi
 .input:read-only:not(:disabled) { background: transparent; border-color: transparent; padding-left: 0; }
 .err { color: var(--bad); font-size: var(--fs-s); line-height: var(--lh-s); }
 .select { appearance: none; padding-right: 32px; background-image: var(--chevron); background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; }
-.search { display: flex; align-items: center; gap: var(--s-2); height: 30px; padding: 0 var(--s-3); border-radius: var(--r-pill); background: var(--island-2); color: var(--t3); font-size: var(--fs-s); width: 240px; max-width: 100%; border: 1px solid transparent; }
+.search { display: flex; align-items: center; gap: var(--s-2); height: 30px; padding: 0 var(--s-3); border-radius: var(--r-pill); background: var(--island-2); color: var(--t3); font-size: var(--fs-s); width: 240px; max-width: 100%; border: 1px solid var(--line); }
 .search:focus-within { border-color: var(--acc); color: var(--t2); }
 .search input { border: 0; background: transparent; color: var(--text); font: inherit; width: 100%; outline: none; min-width: 0; }
 .search input::placeholder { color: var(--t3); }
@@ -965,6 +965,7 @@ function renderWatch() {
   if (!vids.length) {
     v.append(h('div', { class: 'head' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, S.proj.name), h('span', { class: 'sub' }, 'final/'))));
     v.append(h('div', { class: 'empty' }, h('div', { class: 'h' }, 'final/ 里还没有成片'), h('p', {}, '剪辑总装出成片后，这里就能看、能逐帧、能打反馈。')));
+    v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪 · v0.3'));
     return;
   }
   S.groups = groupVersions(vids);
@@ -1042,7 +1043,7 @@ function jumpCut(dir) {
 }
 function selectVersion(x, keepTime) {
   const vid = $('#video'); const t = keepTime ? vid.currentTime : 0; const playing = keepTime && !vid.paused;
-  S.cur = x; S.curGroup = S.groups.find(g => g.files.includes(x)) || S.groups[0]; S.cmp.blinkOn = false;
+  S.cur = x; tlReload(); S.curGroup = S.groups.find(g => g.files.includes(x)) || S.groups[0]; S.cmp.blinkOn = false;
   loadInto(vid, x, t, playing);
   $('#filmTitle').textContent = short(x.name);
   $('#verTag').textContent = x.version; $('#fpsTag').textContent = x.fps ? `${x.fps} fps · ${x.width}×${x.height}` : '';
@@ -1136,6 +1137,7 @@ async function saveDraft() {
   let frame = '';
   if (d.full) { try { frame = (await post('/api/frame', { version: d.version, tc: d.tc, data: d.full, thumb: d.thumb })).path; } catch (e) { toast('截帧没存上：' + e.message, 'bad'); } }
   try { await post('/api/feedback', { items: [{ version: d.version, tc: d.tc, t: d.t, note: d.note, frame }] }); } catch (e) { toast('没写进项目：' + e.message, 'bad'); return; }
+  try { await post('/api/issues', { action: 'create', final: d.file, t: d.t, note: d.note, frame }); } catch (e) { toast('反馈已保存；返修登记失败：' + e.message, 'bad'); }
   S.draft = null; await loadFeedback(); renderMarks(); renderAuxWatch(); toast(`已存到 ${S.fbPath}`, 'ok');
 }
 async function loadFeedback() {
@@ -1509,6 +1511,16 @@ function openContinuity(ctx, left, right) {
 }
 
 /* ---------- 素材库 */
+const libNaturalOrder = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
+const libSortKey = () => 'studio:library-sort:' + (S.proj?.root || '');
+function libSortMode() {
+  if (!S.libSort) {
+    try { S.libSort = localStorage.getItem(libSortKey()); } catch (e) {}
+    if (!['asc', 'desc'].includes(S.libSort)) S.libSort = 'asc';
+  }
+  return S.libSort;
+}
+const libCompare = (a, b) => libNaturalOrder.compare(a, b) * (libSortMode() === 'desc' ? -1 : 1);
 const CAT_ORDER = ['产品', '模特', '剧组', '场景', '片场', '关键帧', '道具'];
 const catSort = (a, b) => ((CAT_ORDER.indexOf(a) + 1 || 99) - (CAT_ORDER.indexOf(b) + 1 || 99)) || a.localeCompare(b, 'zh');
 async function renderLibrary(force) {
@@ -1516,9 +1528,14 @@ async function renderLibrary(force) {
   if (!S.lib || force) { v.append(h('p', { class: 's t3' }, '读取中…')); try { S.lib = await api('/api/library'); } catch (e) { v.innerHTML = ''; v.append(h('p', { class: 'err' }, '读不到素材库：' + e.message)); return; } v.innerHTML = ''; }
   const all = S.lib.items || [];
   const cats = [...new Set(all.map(x => x.cat))].sort(catSort);
-  const search = h('label', { class: 'search', title: '按名字、变体或文件名找' }, h('span', { style: 'display:inline-grid;width:14px;height:14px', html: ICON.search }), h('input', { id: 'libQ', type: 'search', placeholder: '找…', value: S.libQ || '', 'aria-label': '搜素材', oninput: e => { S.libQ = e.target.value; renderLibraryBody(); } }));
+  const search = h('label', { class: 'search', title: '按名字、变体或文件名找' }, h('span', { style: 'display:inline-grid;width:14px;height:14px', html: ICON.search }), h('input', { id: 'libQ', type: 'search', value: S.libQ || '', 'aria-label': '搜素材', oninput: e => { S.libQ = e.target.value; renderLibraryBody(); } }));
+  const sort = h('select', { class: 'select sel-sm', id: 'libSort', 'aria-label': '素材排列顺序', title: '按镜头序号排列', onchange: e => {
+    S.libSort = e.target.value;
+    try { localStorage.setItem(libSortKey(), S.libSort); } catch (e) {}
+    renderLibraryBody();
+  } }, ...[['asc', '序号升序 ↑'], ['desc', '序号降序 ↓']].map(([value, label]) => h('option', { value, selected: libSortMode() === value }, label)));
   v.append(h('div', { class: 'head', style: 'margin-bottom:20px' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, '素材库'), h('span', { class: 'sub' }, S.lib.found ? `${all.length} 个文件` : '素材库/')),
-    h('div', { class: 'actions', style: 'align-items:center;flex-wrap:wrap' }, search, h('div', { class: 'seg', id: 'libCats' }, ...['全部', ...cats].map(c => h('button', { type: 'button', 'aria-pressed': S.libCat === c ? 'true' : 'false', onclick: () => { S.libCat = c; $$('#libCats button').forEach(b => b.setAttribute('aria-pressed', b.textContent === c ? 'true' : 'false')); renderLibraryBody(); } }, c))), h('button', { class: 'pill sm', type: 'button', onclick: () => renderLibrary(true) }, '刷新'))));
+    h('div', { class: 'actions', style: 'align-items:center;flex-wrap:wrap' }, search, sort, h('div', { class: 'seg', id: 'libCats' }, ...['全部', ...cats].map(c => h('button', { type: 'button', 'aria-pressed': S.libCat === c ? 'true' : 'false', onclick: () => { S.libCat = c; $$('#libCats button').forEach(b => b.setAttribute('aria-pressed', b.textContent === c ? 'true' : 'false')); renderLibraryBody(); } }, c))), h('button', { class: 'pill sm', type: 'button', onclick: () => renderLibrary(true) }, '刷新'))));
   v.append(h('div', { id: 'libBody' }));
   renderLibraryBody(); renderAuxLibrary();
 }
@@ -1533,7 +1550,8 @@ function renderLibraryBody() {
     const list = items.filter(x => x.cat === cat);
     const sec = h('div', { class: 'section', style: 'margin-top:32px' }, h('div', { class: 'section-h' }, cat, h('span', { class: 'n' }, list.length)));
     const byName = {}; list.forEach(x => { (byName[x.name] ||= []).push(x); });
-    for (const [name, files] of Object.entries(byName)) {
+    for (const [name, files] of Object.entries(byName).sort(([a], [b]) => libCompare(a, b))) {
+      files.sort((a, b) => libCompare(a.variant || a.name, b.variant || b.name) || libCompare(a.path, b.path));
       const g = h('div', { class: 'lib-group' }, h('div', { class: 'gh' }, h('b', {}, name), h('span', {}, files.length > 1 ? `${files.length} 个` : '')));
       const grid = h('div', { class: 'grid lib' }); const imgs = files.filter(x => x.kind === 'image');
       files.forEach(x => {
@@ -1577,7 +1595,98 @@ function tlInit() {
   TL.pps = TL.z ? Math.min(TL.max, Math.max(TL.fit, TL.fit * TL.z)) : (TL.data.total <= 300 ? TL.fit : Math.max(TL.fit, (sc.clientWidth - tlHeadW()) / 180));
   tlRenderHead(); tlDraw(); TL.ensure = true; tlTime($('#video')?.currentTime || 0);
 }
-async function tlReload() { try { TL.data = await api('/api/timeline'); } catch (e) { toast('读不到剪辑表：' + e.message, 'bad'); return; } TL.sel = null; tlInit(); renderKeys(); if (S.auxTab === 'shot') renderAuxWatch(); }
+/* v0.3：草稿独立于当前审片时间线，只有导出后成为新成片。 */
+async function openIssues() {
+  try {
+    const dialog = h('dialog', { class: 'review-dialog', 'aria-label': '返修问题' });
+    const list = h('div');
+    const finals = (await api('/api/finals')).videos;
+    async function draw() {
+      const state = await api('/api/issues'); list.replaceChildren();
+      if (!state.items.length) list.append(h('p', {}, '暂无问题。看片时按 M 保存反馈，会同时登记返修问题。'));
+      state.items.forEach(item => {
+        const row = h('div', { style: 'padding:16px 0;border-bottom:1px solid var(--line)' });
+        row.append(h('b', {}, ({ pending: '待处理', fixed: '已修复', verified: '已复核' })[item.status] + ' · ' + item.note), h('p', { class: 's t3' }, `${item.final} · ${fmt(item.t)} · ${item.clip?.id || '镜头未匹配'}`));
+        if (item.frame) row.append(h('img', { src: fileUrl(item.frame), style: 'max-width:180px', alt: '问题截帧' }));
+        row.append(h('button', { class: 'pill sm', onclick: () => { const film = finals.find(f => f.path === item.final); if (film) { selectVersion(film, false); seek(item.t); dialog.close(); } } }, '查看原问题'));
+        const select = h('select', { 'aria-label': '修复成片', style: 'max-width:360px' });
+        finals.forEach(f => select.append(h('option', { value: f.path }, f.name)));
+        row.append(select);
+        [['pending', '重新打开'], ['fixed', '登记已修复'], ['verified', '看片后确认复核']].forEach(([status, text]) => row.append(h('button', { class: 'pill sm', onclick: async () => {
+          try { await post('/api/issues', { action: 'status', id: item.id, status, final: select.value }); await draw(); } catch (e) { toast(e.message, 'bad'); }
+        } }, text)));
+        row.append(h('button', { class: 'pill sm', onclick: () => { const film = finals.find(f => f.path === select.value); if (film) { selectVersion(film, false); dialog.close(); } } }, '查看修复成片'));
+        list.append(row);
+      });
+    }
+    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '返修问题'), h('button', { class: 'pill sm', onclick: () => dialog.close() }, '关闭')), h('p', { class: 's t3' }, '修复与复核绑定具体成片。切点改变后请按镜头重新定位，原问题时间码只属于原版本。'), list);
+    dialog.addEventListener('close', () => dialog.remove());
+    document.body.append(dialog); dialog.showModal(); await draw();
+  } catch (e) { toast(e.message, 'bad'); }
+}
+
+async function openEditor() {
+  try {
+    let state = await api('/api/edit'), dirty = false, busy = false;
+    const candidates = (await api('/api/candidates')).items;
+    const dialog = h('dialog', { class: 'review-dialog', 'aria-label': '初剪编辑' });
+    const body = h('div'), status = h('p', { class: 's t3' }), jobs = h('div');
+    const preview = h('video', { controls: true, style: 'width:100%;max-height:32vh;background:#000' });
+    let previewClip = null;
+    preview.addEventListener('timeupdate', () => { if (previewClip && preview.currentTime >= previewClip.out) preview.pause(); });
+    function changed() { dirty = true; status.textContent = '有未保存修改；保存后仍需导出才会更新成片'; }
+    async function action(kind) {
+      if (busy) return;
+      busy = true;
+      try {
+        if (kind !== 'save' && dirty && !confirm('放弃尚未保存的修改？')) return;
+        state = await post('/api/edit', { action: kind, revision: state.revision, clips: state.clips });
+        dirty = false; draw(); status.textContent = '已保存草稿，尚未导出';
+      } catch (e) { toast(e.message, 'bad'); } finally { busy = false; }
+    }
+    function draw() {
+      body.replaceChildren();
+      if (!state.clips.length) body.append(h('p', { class: 's t3' }, '草稿为空。可导入原剪辑、同步已选候选，或添加素材。'));
+      state.clips.forEach((clip, index) => {
+        const row = h('div', { style: 'padding:12px 0;border-bottom:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;align-items:center' });
+        const id = h('input', { value: clip.id, style: 'width:90px', 'aria-label': '镜头ID', onchange: e => { clip.id = e.target.value; changed(); } });
+        const select = h('select', { style: 'max-width:280px', 'aria-label': '候选素材', onchange: e => { clip.src = e.target.value; changed(); } });
+        const paths = [...new Set([clip.src, ...candidates.map(x => x.path)])];
+        paths.forEach(path => select.append(h('option', { value: path, selected: path === clip.src }, path)));
+        row.append(id, select);
+        [['in', '入点秒'], ['out', '出点秒'], ['a', '音量倍数']].forEach(([key, label]) => row.append(h('label', { class: 's' }, label, h('input', { type: 'number', min: '0', step: '.01', value: clip[key], style: 'width:80px', onchange: e => { clip[key] = Number(e.target.value); changed(); } }))));
+        row.append(h('button', { class: 'pill sm', onclick: () => { previewClip = clip; preview.src = fileUrl(clip.src); preview.onloadedmetadata = () => { preview.currentTime = clip.in; preview.volume = Math.min(1, clip.a); }; } }, '预览选段'));
+        [-1, 1].forEach(delta => row.append(h('button', { class: 'pill sm', disabled: index + delta < 0 || index + delta >= state.clips.length, onclick: () => { [state.clips[index], state.clips[index + delta]] = [state.clips[index + delta], state.clips[index]]; changed(); draw(); } }, delta < 0 ? '上移' : '下移')));
+        row.append(h('button', { class: 'pill sm', onclick: () => { state.clips.splice(index, 1); changed(); draw(); } }, '移除'));
+        body.append(row);
+      });
+    }
+    async function refreshJobs() {
+      try {
+        const data = await api('/api/exports'); jobs.replaceChildren();
+        const labels = { queued: '排队', running: '导出中', completed: '完成', failed: '失败' };
+        const latest = data.jobs.find(j => j.status === 'completed');
+        if (!dirty) status.textContent = latest && latest.revision === state.revision ? '此草稿已导出：' + latest.final : '草稿已保存；有尚未导出的变更';
+        data.jobs.slice(0, 6).forEach(j => jobs.append(h('p', { class: 's' }, `${j.final} · ${labels[j.status]} · ${j.completed}/${j.total}${j.error ? ' · ' + j.error : ''}`, ...(j.status === 'completed' ? [h('a', { href: fileUrl(j.final), target: '_blank' }, ' 打开成片')] : []))));
+      } catch (e) { jobs.textContent = e.message; }
+    }
+    const close = () => { if (!dirty || confirm('放弃尚未保存的修改？')) dialog.close(); };
+    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '初剪编辑 · v0.3'), h('button', { class: 'pill sm', onclick: close }, '关闭')), h('p', { class: 's t3' }, '基础顺序剪辑，导出为首镜尺寸、25fps、H.264/AAC。音量0为静音，1为原音量。不会自动沿用外部配乐、字幕、调色和特效。同步已选候选会用完整素材替换对应镜头，请重新核对入出点。'), preview);
+    const toolbar = h('div', { class: 'review-actions' });
+    [['import', '导入原剪辑'], ['selected', '同步已选候选'], ['save', '保存草稿'], ['undo', '撤销已保存修改'], ['redo', '重做']].forEach(([kind, text]) => toolbar.append(h('button', { class: 'pill sm', onclick: () => action(kind) }, text)));
+    toolbar.append(h('button', { class: 'pill sm', onclick: () => { if (!candidates.length) return toast('请先导入素材', 'bad'); state.clips.push({ id: '镜头-' + Date.now(), src: candidates[0].path, in: 0, out: 1, a: 1 }); changed(); draw(); } }, '添加镜头'), h('button', { class: 'pill sm', onclick: async () => {
+      if (dirty) return toast('请先保存草稿', 'bad');
+      try { await post('/api/export', { revision: state.revision }); await refreshJobs(); } catch (e) { toast(e.message, 'bad'); }
+    } }, '导出新版本'));
+    dialog.append(toolbar, status, body, jobs); draw();
+    dialog.addEventListener('cancel', e => { e.preventDefault(); close(); });
+    const timer = setInterval(refreshJobs, 2000);
+    dialog.addEventListener('close', () => { clearInterval(timer); preview.pause(); preview.removeAttribute('src'); preview.load(); dialog.remove(); });
+    document.body.append(dialog); dialog.showModal(); await refreshJobs();
+  } catch (e) { toast(e.message, 'bad'); }
+}
+
+async function tlReload() { try { TL.data = await api('/api/timeline?final=' + encodeURIComponent(S.cur?.path || '')); } catch (e) { toast('读不到剪辑表：' + e.message, 'bad'); return; } TL.sel = null; tlInit(); renderKeys(); if (S.auxTab === 'shot') renderAuxWatch(); }
 const tlSliderVal = () => (TL.fit && TL.max > TL.fit) ? Math.round(100 * Math.log(TL.pps / TL.fit) / Math.log(TL.max / TL.fit)) : 0;
 function tlWindowText() { const sc = $('#tlScroll'); if (!sc || !TL.pps) return ''; return `一屏 ${fmt((sc.clientWidth - tlHeadW()) / TL.pps).replace(/\.\d$/, '')}`; }
 function tlRenderHead() {
@@ -1591,9 +1700,10 @@ function tlRenderHead() {
       h('button', { class: 'pill sm', type: 'button', title: '整条放进一屏', onclick: () => tlSetPps(TL.fit, 0, $('#tlRuler').offsetLeft) }, '整条'),
       h('span', { class: 'xs t3', id: 'tlWin' }, tlWindowText()));
   }
+  hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑 · v0.3'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
   hd.append(h('span', { class: 'sp' }));
   if (has) {
-    if (S.cur && !S.cur.current) hd.append(h('span', { class: 'badge warn', title: '剪辑表只有一份，对应最新的成片' }, '时间线是当前剪辑表的，不是这一版'));
+    if (S.cur && !S.cur.current && !d.exported) hd.append(h('span', { class: 'badge warn', title: '剪辑表只有一份，对应最新的成片' }, '时间线是当前剪辑表的，不是这一版'));
     hd.append(h('span', { class: 'xs t3' }, `${d.V.length} 镜 · ${d.A.length} 条声音`), h('button', { class: 'icon-btn', type: 'button', title: '重新读剪辑表', 'aria-label': '刷新时间线', onclick: tlReload, html: ICON.refresh }));
   }
 }

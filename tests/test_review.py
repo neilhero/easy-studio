@@ -174,6 +174,17 @@ class ReviewTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as error:
                 request(url, "../outside.mp4")
             self.assertEqual(error.exception.code, 400)
+            for endpoint in ('/api/edit', '/api/export', '/api/issues'):
+                req = urllib.request.Request(url + endpoint, data=b'{}', headers={'Content-Type': 'application/json', 'Origin': 'https://other.example'})
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(req, timeout=3)
+                self.assertEqual(error.exception.code, 403)
+            payload = {'revision': 0, 'clips': [{'id': 'S1', 'src': '素材库/镜1.mp4', 'in': 0, 'out': 2, 'a': 1}]}
+            req = urllib.request.Request(url + '/api/edit', data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json', 'Origin': url})
+            with urllib.request.urlopen(req, timeout=3) as response:
+                self.assertEqual(json.load(response)['revision'], 1)
+            with urllib.request.urlopen(url + '/api/edit', timeout=3) as response:
+                self.assertEqual(json.load(response)['clips'][0]['out'], 2)
             with request(url) as response:
                 self.assertTrue(json.load(response)["ok"])
         finally:

@@ -11,7 +11,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from common import ffprobe
 import common as C
+import editing
 
+VERSION = (HERE / "VERSION").read_text(encoding="utf-8").strip()
 ROOT = pathlib.Path.cwd()
 VIDEO = {".mp4", ".mov", ".webm", ".m4v"}
 IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -99,7 +101,7 @@ def walk(d, depth=3):
 
 def api_project():
     keys = (C.DOC, SEG, C.LIB, C.GEN, C.EDIT, EDL, C.FINAL, FB)
-    return {"name": ROOT.name, "root": str(ROOT), "has": {k: (ROOT / k).exists() for k in keys}}
+    return {"version": VERSION, "name": ROOT.name, "root": str(ROOT), "has": {k: (ROOT / k).exists() for k in keys}}
 
 
 def final_videos():
@@ -136,6 +138,10 @@ def api_finals():
         for v in vids:
             if v["current"] and old:
                 v["version"] = f"v{max(old) + 1}"
+        for v in vids:
+            match = re.fullmatch(r"初剪_v(\d+)\.mp4", v["name"])
+            if match:
+                v.update(version="初剪 v" + match.group(1), order=2 * 10 ** 6 + int(match.group(1)))
         vids.sort(key=lambda v: (-v["order"], v["name"]))
     return {"videos": vids, "docs": docs}
 
@@ -345,7 +351,8 @@ def review_context(sid, final_path):
     if final_path not in finals:
         raise ValueError("请选择实际存在的成片")
     film, _ = finals[final_path]
-    timeline = api_timeline()
+    exported = editing.manifest(sys.modules[__name__], final_path)
+    timeline = exported["timeline"] if exported else api_timeline()
     clips = timeline.get("V", [])
     entry = row["review_entry"]
     # 只接受明确的段号/节拍名称或已选素材匹配，不靠列表下标猜镜头。
@@ -364,15 +371,16 @@ def review_context(sid, final_path):
         window = clips[max(0, idx - 1):idx + 2]
         result["neighbors"] = window
         start, end = window[0]["start"], window[-1]["start"] + window[-1]["dur"]
-        sources = {c["src"]: file_hash(safe(c["src"])) for c in window}
+        sources = {c["src"]: (exported["sources"].get(c["src"]) if exported else file_hash(safe(c["src"]))) for c in window}
         audio = [x for x in timeline.get("A", []) if x["start"] < end and x["start"] + x["dur"] > start]
         sources.update({x["src"]: file_hash(safe(x["src"])) for x in audio})
         snapshot = {"film": result["film_hash"], "clips": window, "sources": sources, "audio": audio,
                     "subs": [x for x in timeline.get("subs", []) if x["start"] < end and x["end"] > start],
                     "look": timeline.get("look"), "target_i": timeline.get("target_i"), "duck_db": timeline.get("duck_db"),
-                    "selected": entry.get("selected")}
+                    "selected": ({"path": clip["src"], "fingerprint": exported["sources"].get(clip["src"])} if exported else entry.get("selected"))}
         result["signature"] = hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         confirmed = bool(binding and binding == {"film": result["film_hash"], "signature": result["signature"]})
+        confirmed = confirmed or bool(exported)
         result["confirmed"] = confirmed
         records = entry.get("acceptances", [])
         record = next((x for x in reversed(records) if x["final"] == final_path), None)
@@ -713,7 +721,7 @@ def append_feedback(body):
 
 
 class H(BaseHTTPRequestHandler):
-    server_version = "studio/1"
+    server_version = "LazyStudio/" + VERSION
 
     def log_message(self, *a):
         pass
@@ -817,6 +825,12 @@ class H(BaseHTTPRequestHandler):
                 self.send_response(204)
                 self.end_headers()
                 return
+            if path == "/api/issues":
+                return self._json(editing.issues(sys.modules[__name__]))
+            if path == "/api/edit":
+                return self._json(editing.read(sys.modules[__name__]))
+            if path == "/api/exports":
+                return self._json({"jobs": editing.jobs(sys.modules[__name__])})
             if path == "/api/project":
                 return self._json(api_project())
             if path == "/api/finals":
@@ -832,7 +846,9 @@ class H(BaseHTTPRequestHandler):
             if path == "/api/feedback":
                 return self._json(api_feedback_get())
             if path == "/api/timeline":
-                return self._json(api_timeline())
+                final = q.get("final", [""])[0]
+                exported = editing.manifest(sys.modules[__name__], final) if final else None
+                return self._json({**exported["timeline"], "exported": True, "mtime": _mt(EDL)} if exported else api_timeline())
             if path == "/api/stat":
                 return self._json(api_stat())
             if path == "/api/doc":
@@ -854,6 +870,12 @@ class H(BaseHTTPRequestHandler):
             return
         u = urllib.parse.urlsplit(self.path)
         try:
+            if u.path == "/api/issues":
+                return self._json(editing.issues(sys.modules[__name__], self._body()))
+            if u.path == "/api/edit":
+                return self._json(editing.mutate(sys.modules[__name__], self._body()))
+            if u.path == "/api/export":
+                return self._json(editing.start(sys.modules[__name__], self._body()))
             if u.path == "/api/review":
                 return self._json(review_mutate(self._body()))
             if u.path == "/api/frame":
