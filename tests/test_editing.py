@@ -80,6 +80,75 @@ class EditingTests(unittest.TestCase):
         self.assertTrue(editing.issues(app)['items'][0]['needs_review'])
         self.assertEqual(editing.issues(app)['items'][0]['status'], 'pending')
 
+    def test_cancel_terminates_process_and_retry_uses_original_snapshot(self):
+        # 可取消的长任务，写入启动标志，避免靠固定睡眠猜进程状态。
+        marker = app.ROOT / 'started'
+        fake = app.ROOT / 'slow-ffmpeg'
+        fake.write_text('#!/usr/bin/python3\nimport pathlib,time\npathlib.Path(' + repr(str(marker)) + ').touch()\ntime.sleep(60)\n')
+        fake.chmod(0o755)
+        state = self.save()
+        with patch.dict(os.environ, {'FFMPEG_BIN': str(fake)}):
+            job = editing.start(app, {'revision': state['revision']})
+            deadline = time.monotonic() + 8
+            while not marker.exists() and editing.ACTIVE and time.monotonic() < deadline:
+                time.sleep(.02)
+            self.assertTrue(marker.exists())
+            editing.cancel(app, {'id': job['id']})
+            while editing.ACTIVE and time.monotonic() < deadline:
+                time.sleep(.02)
+            self.assertFalse(editing.ACTIVE)
+            self.assertEqual(editing.jobs(app)[0]['status'], 'cancelled')
+            self.assertFalse(app.safe(job['final']).exists())
+            self.save([{**self.clip, 'out': 2}])
+            with patch.object(editing.threading, 'Thread'):
+                retried = editing.start(app, {'retry': job['id']})
+            try:
+                self.assertEqual(retried['clips'][0]['out'], 1)
+                self.assertEqual(retried['retry_of'], job['id'])
+                self.assertNotEqual(retried['final'], job['final'])
+            finally:
+                editing.ACTIVE.discard(retried['id'])
+                editing.CANCEL.pop(retried['id'], None)
+            (app.ROOT / self.clip['src']).write_bytes(b'changed')
+            with self.assertRaises(ValueError):
+                editing.start(app, {'retry': job['id']})
+
+    def test_failed_retry_keeps_original_clip_after_draft_changes(self):
+        state = self.save()
+        with patch.dict(os.environ, {'FFMPEG_BIN': '/usr/bin/false'}):
+            old = editing.start(app, {'revision': state['revision']})
+            deadline = time.monotonic() + 5
+            while editing.ACTIVE and time.monotonic() < deadline:
+                time.sleep(.02)
+            self.assertEqual(editing.jobs(app)[0]['status'], 'failed')
+            self.save([{**self.clip, 'out': 2}])
+            with patch.object(editing.threading, 'Thread'):
+                new = editing.start(app, {'retry': old['id']})
+            try:
+                self.assertEqual(new['clips'][0]['out'], 1)
+            finally:
+                editing.ACTIVE.discard(new['id'])
+                editing.CANCEL.pop(new['id'], None)
+
+    def test_issue_location_tracks_reordered_shortened_clip_and_refuses_ambiguity(self):
+        (app.ROOT / 'final').mkdir()
+        for name in ('old', 'new'):
+            (app.ROOT / f'final/{name}.mp4').write_bytes(name.encode())
+        old = editing.timeline([{**self.clip, 'out': 3}])
+        with patch.object(app, 'api_timeline', return_value=old):
+            item = editing.issues(app, {'action': 'create', 'final': 'final/old.mp4', 't': 2, 'note': '动作问题'})['items'][0]
+        clips = [{**self.clip, 'id': 'S2', 'out': 2}, {**self.clip, 'out': .5}]
+        data = {'schema': 'lazy-export-1', 'film_hash': app.file_hash(app.ROOT / 'final/new.mp4'), 'timeline': editing.timeline(clips)}
+        editing.write(app, 'final/new.mp4.json', data)
+        point = editing.issue_location(app, item['id'], 'final/new.mp4')
+        self.assertFalse(point['exact'])
+        self.assertEqual(point['t'], 2.46)
+        self.assertEqual(editing.issue_location(app, item['id'], 'final/old.mp4')['t'], 2)
+        data['timeline']['V'].append(data['timeline']['V'][1])
+        editing.write(app, 'final/new.mp4.json', data)
+        with self.assertRaises(ValueError):
+            editing.issue_location(app, item['id'], 'final/new.mp4')
+
     def test_real_export_audio_silent_and_version_snapshot(self):
         ffmpeg = os.environ.get('FFMPEG_BIN') or shutil.which('ffmpeg')
         ffprobe = os.environ.get('FFPROBE_BIN') or shutil.which('ffprobe')

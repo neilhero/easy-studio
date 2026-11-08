@@ -965,7 +965,7 @@ function renderWatch() {
   if (!vids.length) {
     v.append(h('div', { class: 'head' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, S.proj.name), h('span', { class: 'sub' }, 'final/'))));
     v.append(h('div', { class: 'empty' }, h('div', { class: 'h' }, 'final/ 里还没有成片'), h('p', {}, '剪辑总装出成片后，这里就能看、能逐帧、能打反馈。')));
-    v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪 · v0.3'));
+    v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪 · v0.3.1'));
     return;
   }
   S.groups = groupVersions(vids);
@@ -1615,7 +1615,13 @@ async function openIssues() {
         [['pending', '重新打开'], ['fixed', '登记已修复'], ['verified', '看片后确认复核']].forEach(([status, text]) => row.append(h('button', { class: 'pill sm', onclick: async () => {
           try { await post('/api/issues', { action: 'status', id: item.id, status, final: select.value }); await draw(); } catch (e) { toast(e.message, 'bad'); }
         } }, text)));
-        row.append(h('button', { class: 'pill sm', onclick: () => { const film = finals.find(f => f.path === select.value); if (film) { selectVersion(film, false); dialog.close(); } } }, '查看修复成片'));
+        row.append(h('button', { class: 'pill sm', onclick: async () => {
+          try {
+            const location = await api('/api/issue-location?id=' + encodeURIComponent(item.id) + '&final=' + encodeURIComponent(select.value));
+            const film = finals.find(f => f.path === select.value);
+            if (film) { selectVersion(film, false); const video = $('#video'); if (video.readyState >= 1) seek(location.t); else video.addEventListener('loadedmetadata', () => seek(location.t), { once: true }); dialog.close(); toast(location.reason); }
+          } catch (e) { toast(e.message, 'bad'); }
+        } }, '定位修复镜头'));
         list.append(row);
       });
     }
@@ -1633,7 +1639,30 @@ async function openEditor() {
     const body = h('div'), status = h('p', { class: 's t3' }), jobs = h('div');
     const preview = h('video', { controls: true, style: 'width:100%;max-height:32vh;background:#000' });
     let previewClip = null;
-    preview.addEventListener('timeupdate', () => { if (previewClip && preview.currentTime >= previewClip.out) preview.pause(); });
+    const loop = h('input', { type: 'checkbox', 'aria-label': '循环预览选段' });
+    const previewName = h('span', { class: 's t3' }, '先选择一个选段');
+    function boundary() {
+      if (!previewClip) return;
+      if (preview.currentTime >= previewClip.out || preview.ended) {
+        preview.pause();
+        if (loop.checked) { preview.currentTime = previewClip.in; preview.play().catch(() => {}); }
+      }
+    }
+    preview.addEventListener('timeupdate', boundary);
+    preview.addEventListener('ended', boundary);
+    preview.addEventListener('play', () => { if (previewClip && (preview.currentTime < previewClip.in || preview.currentTime >= previewClip.out)) preview.currentTime = previewClip.in; });
+    function clearPreview() { preview.pause(); previewClip = null; previewName.textContent = '先选择一个选段'; preview.removeAttribute('src'); preview.load(); }
+    function trim(key, value) {
+      if (!previewClip || !Number.isFinite(preview.duration)) return toast('先加载选段', 'bad');
+      value = Math.round(value * 1000) / 1000;
+      if (value < 0 || value > preview.duration || (key === 'in' ? value >= previewClip.out : value <= previewClip.in)) return toast('入出点须在素材范围内，且入点小于出点', 'bad');
+      previewClip[key] = value; preview.pause(); preview.currentTime = Math.min(value, preview.duration); changed(); draw();
+    }
+    const trimBar = h('div', { class: 'review-actions' }, previewName, h('label', {}, loop, '循环选段'));
+    [['in', '入点'], ['out', '出点']].forEach(([key, label]) => {
+      trimBar.append(h('button', { class: 'pill sm', onclick: () => trim(key, preview.currentTime) }, '当前位置设为' + label));
+      [-.04, .04].forEach(delta => trimBar.append(h('button', { class: 'pill sm', onclick: () => trim(key, (previewClip?.[key] || 0) + delta) }, label + (delta < 0 ? ' −0.04秒' : ' +0.04秒'))));
+    });
     function changed() { dirty = true; status.textContent = '有未保存修改；保存后仍需导出才会更新成片'; }
     async function action(kind) {
       if (busy) return;
@@ -1641,7 +1670,7 @@ async function openEditor() {
       try {
         if (kind !== 'save' && dirty && !confirm('放弃尚未保存的修改？')) return;
         state = await post('/api/edit', { action: kind, revision: state.revision, clips: state.clips });
-        dirty = false; draw(); status.textContent = '已保存草稿，尚未导出';
+        clearPreview(); dirty = false; draw(); status.textContent = '已保存草稿，尚未导出';
       } catch (e) { toast(e.message, 'bad'); } finally { busy = false; }
     }
     function draw() {
@@ -1650,28 +1679,39 @@ async function openEditor() {
       state.clips.forEach((clip, index) => {
         const row = h('div', { style: 'padding:12px 0;border-bottom:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;align-items:center' });
         const id = h('input', { value: clip.id, style: 'width:90px', 'aria-label': '镜头ID', onchange: e => { clip.id = e.target.value; changed(); } });
-        const select = h('select', { style: 'max-width:280px', 'aria-label': '候选素材', onchange: e => { clip.src = e.target.value; changed(); } });
+        const select = h('select', { style: 'max-width:280px', 'aria-label': '候选素材', onchange: e => { clip.src = e.target.value; if (previewClip === clip) clearPreview(); changed(); } });
         const paths = [...new Set([clip.src, ...candidates.map(x => x.path)])];
         paths.forEach(path => select.append(h('option', { value: path, selected: path === clip.src }, path)));
         row.append(id, select);
         [['in', '入点秒'], ['out', '出点秒'], ['a', '音量倍数']].forEach(([key, label]) => row.append(h('label', { class: 's' }, label, h('input', { type: 'number', min: '0', step: '.01', value: clip[key], style: 'width:80px', onchange: e => { clip[key] = Number(e.target.value); changed(); } }))));
-        row.append(h('button', { class: 'pill sm', onclick: () => { previewClip = clip; preview.src = fileUrl(clip.src); preview.onloadedmetadata = () => { preview.currentTime = clip.in; preview.volume = Math.min(1, clip.a); }; } }, '预览选段'));
+        row.append(h('button', { class: 'pill sm', onclick: () => { preview.pause(); previewClip = clip; previewName.textContent = '预览：' + clip.id; preview.src = fileUrl(clip.src); preview.onloadedmetadata = () => { preview.currentTime = clip.in; preview.volume = Math.min(1, clip.a); }; } }, '预览选段'));
         [-1, 1].forEach(delta => row.append(h('button', { class: 'pill sm', disabled: index + delta < 0 || index + delta >= state.clips.length, onclick: () => { [state.clips[index], state.clips[index + delta]] = [state.clips[index + delta], state.clips[index]]; changed(); draw(); } }, delta < 0 ? '上移' : '下移')));
-        row.append(h('button', { class: 'pill sm', onclick: () => { state.clips.splice(index, 1); changed(); draw(); } }, '移除'));
+        row.append(h('button', { class: 'pill sm', onclick: () => { if (previewClip === clip) clearPreview(); state.clips.splice(index, 1); changed(); draw(); } }, '移除'));
         body.append(row);
       });
     }
     async function refreshJobs() {
       try {
         const data = await api('/api/exports'); jobs.replaceChildren();
-        const labels = { queued: '排队', running: '导出中', completed: '完成', failed: '失败' };
+        const labels = { queued: '排队', running: '导出中', completed: '完成', failed: '失败', cancelled: '已取消' };
         const latest = data.jobs.find(j => j.status === 'completed');
         if (!dirty) status.textContent = latest && latest.revision === state.revision ? '此草稿已导出：' + latest.final : '草稿已保存；有尚未导出的变更';
-        data.jobs.slice(0, 6).forEach(j => jobs.append(h('p', { class: 's' }, `${j.final} · ${labels[j.status]} · ${j.completed}/${j.total}${j.error ? ' · ' + j.error : ''}`, ...(j.status === 'completed' ? [h('a', { href: fileUrl(j.final), target: '_blank' }, ' 打开成片')] : []))));
+        data.jobs.slice(0, 6).forEach(j => {
+          const row = h('p', { class: 's' }, `${j.final} · ${labels[j.status]} · ${j.completed}/${j.total}${j.error ? ' · ' + j.error : ''}`);
+          if (j.status === 'completed') row.append(h('a', { href: fileUrl(j.final), target: '_blank' }, ' 打开成片'));
+          else row.append(h('button', { class: 'pill sm', onclick: async () => {
+            try {
+              if (['queued', 'running'].includes(j.status)) await post('/api/export/cancel', { id: j.id });
+              else await post('/api/export', { retry: j.id });
+              await refreshJobs();
+            } catch (e) { toast(e.message, 'bad'); }
+          } }, ['queued', 'running'].includes(j.status) ? '取消导出' : '按原任务重试'));
+          jobs.append(row);
+        });
       } catch (e) { jobs.textContent = e.message; }
     }
     const close = () => { if (!dirty || confirm('放弃尚未保存的修改？')) dialog.close(); };
-    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '初剪编辑 · v0.3'), h('button', { class: 'pill sm', onclick: close }, '关闭')), h('p', { class: 's t3' }, '基础顺序剪辑，导出为首镜尺寸、25fps、H.264/AAC。音量0为静音，1为原音量。不会自动沿用外部配乐、字幕、调色和特效。同步已选候选会用完整素材替换对应镜头，请重新核对入出点。'), preview);
+    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '初剪编辑 · v0.3.1'), h('button', { class: 'pill sm', onclick: close }, '关闭')), h('p', { class: 's t3' }, '基础顺序剪辑，导出为首镜尺寸、25fps、H.264/AAC。音量0为静音，1为原音量。不会自动沿用外部配乐、字幕、调色和特效。同步已选候选会用完整素材替换对应镜头，请重新核对入出点。'), preview, trimBar);
     const toolbar = h('div', { class: 'review-actions' });
     [['import', '导入原剪辑'], ['selected', '同步已选候选'], ['save', '保存草稿'], ['undo', '撤销已保存修改'], ['redo', '重做']].forEach(([kind, text]) => toolbar.append(h('button', { class: 'pill sm', onclick: () => action(kind) }, text)));
     toolbar.append(h('button', { class: 'pill sm', onclick: () => { if (!candidates.length) return toast('请先导入素材', 'bad'); state.clips.push({ id: '镜头-' + Date.now(), src: candidates[0].path, in: 0, out: 1, a: 1 }); changed(); draw(); } }, '添加镜头'), h('button', { class: 'pill sm', onclick: async () => {
@@ -1700,7 +1740,7 @@ function tlRenderHead() {
       h('button', { class: 'pill sm', type: 'button', title: '整条放进一屏', onclick: () => tlSetPps(TL.fit, 0, $('#tlRuler').offsetLeft) }, '整条'),
       h('span', { class: 'xs t3', id: 'tlWin' }, tlWindowText()));
   }
-  hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑 · v0.3'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
+  hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑 · v0.3.1'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
   hd.append(h('span', { class: 'sp' }));
   if (has) {
     if (S.cur && !S.cur.current && !d.exported) hd.append(h('span', { class: 'badge warn', title: '剪辑表只有一份，对应最新的成片' }, '时间线是当前剪辑表的，不是这一版'));

@@ -14,6 +14,11 @@ import uuid
 DRAFT = '剪辑/草稿.json'
 LOCK = threading.RLock()
 ACTIVE = set()
+CANCEL = {}
+
+
+class ExportCancelled(Exception):
+    pass
 
 
 def write(app, path, data):
@@ -152,7 +157,13 @@ def start(app, body):
         if ACTIVE:
             raise ValueError('已有导出任务正在运行')
         state = read(app)
-        if body.get('revision') != state['revision']:
+        retry = body.get('retry')
+        if retry:
+            old = next((j for j in jobs(app) if j['id'] == retry), None)
+            if not old or old['status'] not in ('failed', 'cancelled'):
+                raise ValueError('只能重试失败或已取消的任务')
+            state = {'revision': old['revision'], 'clips': old['clips']}
+        elif body.get('revision') != state['revision']:
             raise ValueError('请先保存最新草稿')
         clips = validate(app, state['clips'])
         if not clips:
@@ -167,22 +178,61 @@ def start(app, body):
         if not final_dir:
             raise PermissionError('成片路径越界')
         final_dir.mkdir(exist_ok=True)
-        existing = [int(m.group(1)) for p in final_dir.glob('初剪_v*.mp4') if (m := app.re.search(r'_v(\d+)', p.name))]
+        names = [p.name for p in final_dir.glob('初剪_v*.mp4')] + [j['final'] for j in jobs(app)]
+        existing = [int(m.group(1)) for name in names if (m := app.re.search(r'_v(\d+)', name))]
         output = f'final/初剪_v{max(existing, default=0)+1:03d}.mp4'
         job = {'id': token, 'status': 'queued', 'completed': 0, 'total': len(clips), 'final': output,
-               'revision': state['revision'], 'clips': clips, 'error': ''}
+               'revision': state['revision'], 'clips': clips, 'error': '', 'retry_of': retry}
         write(app, f'剪辑/导出任务/{token}.json', job)
         ACTIVE.add(token)
+        CANCEL[token] = threading.Event()
         threading.Thread(target=render, args=(app, executable, job), daemon=True).start()
         return job
 
 
+def cancel(app, body):
+    with LOCK:
+        token = body.get('id')
+        event = CANCEL.get(token)
+        job = next((j for j in jobs(app) if j['id'] == token), None)
+        if not event or not job or job['status'] not in ('queued', 'running'):
+            raise ValueError('任务已结束或不存在')
+        event.set()
+        return {'ok': True}
+
+
 def render(app, executable, job):
     path = f"剪辑/导出任务/{job['id']}.json"
+    def check_cancel():
+        if CANCEL[job['id']].is_set():
+            raise ExportCancelled('已取消，未发布成片')
     def run(args):
-        p = subprocess.run([executable, '-nostdin', '-v', 'error', '-y', *args], capture_output=True, text=True, timeout=21600)
-        if p.returncode:
-            raise ValueError(p.stderr[-3000:] or 'FFmpeg 导出失败')
+        check_cancel()
+        # 短间隔等待，取消时终止并回收当前FFmpeg进程。
+        import time
+        with subprocess.Popen([executable, '-nostdin', '-v', 'error', '-y', *args], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True) as process:
+            deadline = time.monotonic() + 21600
+            try:
+                while True:
+                    check_cancel()
+                    if time.monotonic() > deadline:
+                        raise TimeoutError('导出超时')
+                    try:
+                        _, error = process.communicate(timeout=.2)
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+                check_cancel()
+                if process.returncode:
+                    raise ValueError(error[-3000:] or 'FFmpeg 导出失败')
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.communicate(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.communicate()
     try:
         job['status'] = 'running'
         write(app, path, job)
@@ -215,15 +265,21 @@ def render(app, executable, job):
             film_hash = app.file_hash(rendered)
             data = {'schema': 'lazy-export-1', 'film_hash': film_hash, 'timeline': timeline(job['clips']), 'job': job['id'], 'revision': job['revision'], 'sources': {c['src']: c['fingerprint'] for c in job['clips']}}
             # 先登记，再以硬链接发布：目标存在时失败，永不覆盖旧成片。
-            write(app, job['final'] + '.json', data)
-            os.link(rendered, app.safe(job['final']))
-        job['status'] = 'completed'
+            with LOCK:
+                check_cancel()
+                write(app, job['final'] + '.json', data)
+                os.link(rendered, app.safe(job['final']))
+                job['status'] = 'completed'
+                write(app, path, job)
+    except ExportCancelled as e:
+        job.update(status='cancelled', error=str(e))
     except Exception as e:
         job.update(status='failed', error=str(e))
     finally:
         write(app, path, job)
         with LOCK:
             ACTIVE.discard(job['id'])
+            CANCEL.pop(job['id'], None)
 
 
 def issues(app, body=None):
@@ -279,3 +335,29 @@ def issues(app, body=None):
             raise ValueError('未知问题操作')
         write(app, '反馈/返修问题.json', state)
         return state
+
+
+def issue_location(app, token, final):
+    item = next((x for x in issues(app)['items'] if x['id'] == token), None)
+    if not item:
+        raise ValueError('问题不存在')
+    if final not in {app.rel(p) for p, _, _ in app.final_videos()}:
+        raise ValueError('请选择具体成片')
+    if final == item['final'] and app.file_hash(app.safe(final)) == item['film_hash']:
+        return {'t': item['t'], 'exact': True, 'reason': '原问题时间码'}
+    exported = manifest(app, final)
+    original = item.get('clip')
+    if not exported or not original:
+        raise ValueError('缺少可信剪辑快照，请在成片中手动定位')
+    ids = {str(original['id'])}
+    for row in app.api_segments().get('rows', []):
+        if str(original['id']) in (row['id'], row['scene']):
+            ids.update((row['id'], row['scene']))
+    matches = [c for c in exported['timeline']['V'] if str(c['id']) in ids]
+    if len(matches) != 1:
+        raise ValueError('新版本不能唯一匹配原镜头，请手动定位')
+    clip = matches[0]
+    offset = max(0, item['t'] - original['start'])
+    t = clip['start'] + min(offset, max(0, clip['dur'] - .04))
+    return {'t': round(t, 3), 'exact': False, 'clip': clip['id'],
+            'reason': '已按镜头定位；素材或切点可能变化，请看片复核'}

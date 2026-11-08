@@ -825,6 +825,8 @@ class H(BaseHTTPRequestHandler):
                 self.send_response(204)
                 self.end_headers()
                 return
+            if path == "/api/issue-location":
+                return self._json(editing.issue_location(sys.modules[__name__], q.get("id", [""])[0], q.get("final", [""])[0]))
             if path == "/api/issues":
                 return self._json(editing.issues(sys.modules[__name__]))
             if path == "/api/edit":
@@ -874,6 +876,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(editing.issues(sys.modules[__name__], self._body()))
             if u.path == "/api/edit":
                 return self._json(editing.mutate(sys.modules[__name__], self._body()))
+            if u.path == "/api/export/cancel":
+                return self._json(editing.cancel(sys.modules[__name__], self._body()))
             if u.path == "/api/export":
                 return self._json(editing.start(sys.modules[__name__], self._body()))
             if u.path == "/api/review":
