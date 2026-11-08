@@ -869,15 +869,27 @@ body { -webkit-font-smoothing:antialiased; }
 #libBody .grid.lib.shot-previews { aspect-ratio:16/9; grid-template-columns:repeat(var(--preview-cols),minmax(0,1fr)); grid-template-rows:repeat(var(--preview-rows),minmax(0,1fr)); align-items:center; }
 #libBody .shot-previews .pic { aspect-ratio:16/9; min-width:0; min-height:0; max-height:100%; }
 #libBody .shot-previews .pic :is(img,video) { aspect-ratio:auto; height:100%; }
+.app-version { position:fixed; bottom:18px; right:24px; z-index:4; padding:4px 8px; border:1px solid var(--line); border-radius:7px; color:var(--t3); background:var(--island); font:10px/16px var(--mono); pointer-events:none; }
+.quality-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.quality-grid label,.quality-form label { display:flex; gap:8px; align-items:center; margin-block:8px; }
+.quality-form textarea { width:100%; min-height:80px; }
+.reference-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; }
+.reference-card { padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--island-2); }
+.reference-card img { width:100%; height:100px; object-fit:contain; }
+.quality-section { margin-top:24px; border-top:1px solid var(--line); padding-top:18px; }
+.quality-section h3 { font-size:15px; margin-bottom:12px; }
+@media(max-width:720px) { .app-version { bottom:76px; right:12px; } .quality-grid { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
+<div class="app-version" id="appVersion" aria-label="Lazy Studio程序版本">Lazy Studio</div>
 <div class="shell" id="shell">
   <nav class="island nav" aria-label="视图">
     <div class="brand" title="Lazy Studio · 放映室"><b>Lazy</b><span>Studio</span></div>
     <button class="i" type="button" data-view="watch" aria-current="page" title="看片"><span class="ic"></span><span class="l">看片</span></button>
     <button class="i" type="button" data-view="progress" title="进度"><span class="ic"></span><span class="l">进度</span></button>
     <button class="i" type="button" data-view="library" title="素材库"><span class="ic"></span><span class="l">素材库</span></button>
+    <button class="i" type="button" id="qualityBtn" title="连戏与质检"><span class="ic"></span><span class="l">质检</span></button>
     <span class="sp"></span>
     <button class="i drawerbtn" type="button" id="drawerBtn" title="打开面板" aria-pressed="false"><span class="ic"></span><span class="l">面板</span></button>
     <button class="i navtoggle" type="button" id="navToggle" title="展开导航"><span class="ic"></span><span class="l">收起</span></button>
@@ -943,7 +955,7 @@ const ICON = {
   expand: svg('<path d="m6 6 6 6-6 6M13 6l6 6-6 6"/>'), collapse: svg('<path d="m18 6-6 6 6 6M11 6l-6 6 6 6"/>'),
   pen: svg('<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="m12.5 7.5 4 4"/>'), minus: svg('<path d="M5 12h14"/>'), plus: svg('<path d="M12 5v14M5 12h14"/>'), refresh: svg('<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'),
 };
-$$('.nav .i').forEach(b => { const v = b.dataset.view; b.querySelector('.ic').innerHTML = ICON[{ watch: 'film', progress: 'table', library: 'grid' }[v] || { drawerBtn: 'panel', navToggle: 'expand', theme: 'moon' }[b.id]]; });
+$$('.nav .i').forEach(b => { const v = b.dataset.view; b.querySelector('.ic').innerHTML = ICON[{ watch: 'film', progress: 'table', library: 'grid' }[v] || { drawerBtn: 'panel', navToggle: 'expand', theme: 'moon', qualityBtn: 'table' }[b.id]]; });
 
 const S = { view: 'watch', proj: null, finals: { videos: [], docs: [] }, cur: null, cmp: { mode: 'off', alt: null, offset: 0, audio: 'cur', blinkOn: false }, markers: [], draft: null,
   auxTab: 'marks', fbPath: '反馈/待处理.md', editing: null, segs: null, selSeg: null, lib: null, selLib: null, libCat: '全部', doc: null, docPath: null, lb: null };
@@ -1046,7 +1058,7 @@ function renderWatch() {
   if (!vids.length) {
     v.append(h('div', { class: 'head' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, S.proj.name), h('span', { class: 'sub' }, 'final/'))));
     v.append(h('div', { class: 'empty' }, h('div', { class: 'h' }, 'final/ 里还没有成片'), h('p', {}, '剪辑总装出成片后，这里就能看、能逐帧、能打反馈。')));
-    v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪 · v0.4.2'));
+    v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪'));
     return;
   }
   S.groups = groupVersions(vids);
@@ -1679,6 +1691,85 @@ function tlInit() {
   tlRenderHead(); tlDraw(); TL.ensure = true; tlTime($('#video')?.currentTime || 0);
 }
 /* v0.3：草稿独立于当前审片时间线，只有导出后成为新成片。 */
+$('#qualityBtn').addEventListener('click', openQuality);
+
+async function openQuality() {
+  try {
+    let state = await api('/api/quality');
+    const [segments,library,finals,candidates] = await Promise.all([api('/api/segments'),api('/api/library'),api('/api/finals'),api('/api/candidates')]);
+    const dialog = h('dialog',{class:'review-dialog quality-form','aria-label':'连戏与质检'});
+    const refs = h('div'), shot = h('div'), reports = h('div');
+    const select = (label,options) => h('select',{'aria-label':label,class:'select'},...options.map(([value,text])=>h('option',{value},text)));
+    const assetChoice = select('参考卡版本编辑',[['','新建参考卡'],...state.assets.map(a=>[a.id,a.versions.at(-1).name])]);
+    const name = h('input',{'aria-label':'参考名称',placeholder:'名称'}), note = h('textarea',{'aria-label':'参考说明',placeholder:'人物外观、服装、道具或场景的固定要求'});
+    const kind = select('参考类型',['人物','服装','道具','场景'].map(x=>[x,x]));
+    const image = select('参考图片',(library.items || []).filter(x=>x.kind==='image').map(x=>[x.path,x.path]));
+    const error = h('p',{class:'s t3'});
+    function renderRefs() {
+      refs.replaceChildren();
+      if (!state.assets.length) refs.append(h('p',{class:'s t3'},'暂无参考卡。先把图片放入项目素材库，再在此建立参考。'));
+      const grid = h('div',{class:'reference-list'});
+      state.assets.forEach(a=>{const v=a.versions.at(-1);grid.append(h('div',{class:'reference-card'},h('img',{src:fileUrl(v.image),alt:v.name}),h('b',{},v.name),h('p',{class:'s t3'},`${v.kind} · v${v.version}`),h('p',{class:'s'},v.note),h('details',{},h('summary',{},'修订记录'),...a.versions.map(r=>h('p',{class:'xs t3'},`v${r.version} · ${r.at} · ${r.note}`)))));});refs.append(grid);
+    }
+    assetChoice.addEventListener('change',()=>{const a=state.assets.find(x=>x.id===assetChoice.value);if(a){const v=a.versions.at(-1);name.value=v.name;note.value=v.note;kind.value=v.kind;image.value=v.image;}else{name.value='';note.value='';}});
+    const sid = select('连戏镜头',(segments.rows || []).map(r=>[r.id,`${r.id} · ${r.scene}`]));
+    const film = select('连戏成片',finals.videos.map(v=>[v.path,v.name]));
+    let shotRequest = 0;
+    async function renderShot() {
+      const request = ++shotRequest;
+      shot.replaceChildren();
+      if(!sid.value || !film.value) {shot.append(h('p',{class:'s t3'},'需要分段表和已导出成片。'));return;}
+      try {
+        const ctx=await api('/api/quality-context?segment='+encodeURIComponent(sid.value)+'&final='+encodeURIComponent(film.value));
+        if (request !== shotRequest) return;
+        const requirements=h('textarea',{'aria-label':'镜头连戏要求',placeholder:'每行一项，例如：右手持桃核；服装不变'},ctx.shot.requirements);
+        const choices=h('div');
+        const selected=new Set(ctx.shot.references.map(x=>x.id));
+        state.assets.forEach(a=>choices.append(h('label',{},h('input',{type:'checkbox',checked:selected.has(a.id),onchange:e=>e.target.checked?selected.add(a.id):selected.delete(a.id)}),a.versions.at(-1).name)));
+        shot.append(h('p',{class:'s'},'连戏状态：'+ctx.status),requirements,choices,h('button',{class:'pill sm',onclick:async()=>{try{state=await post('/api/quality',{action:'shot',revision:ctx.revision,segment:sid.value,requirements:requirements.value,assets:[...selected]});await renderShot();}catch(e){toast(e.message,'bad');}}},'保存要求与最新参考版本'));
+        ctx.references.forEach(r=>{if(r.record)shot.append(h('div',{class:'reference-card'},h('img',{src:fileUrl(r.record.image),alt:r.record.name}),h('p',{class:'s'},`${r.record.name} · 已引用 v${r.version}${r.new_version?' · 有新版本，请复核':''}${r.current_hash!==r.record.fingerprint?' · 图片内容已变化':''}`)));});
+        const values={};const grid=h('div',{class:'quality-grid'});
+        ctx.checks.forEach(key=>{const el=select(key,[['pending','待检查'],['pass','通过'],['fail','有问题']]);el.value=ctx.review?.checks[key] || 'pending';values[key]=el;grid.append(h('label',{},key,el));});
+        const comment=h('textarea',{'aria-label':'连戏问题说明',placeholder:'发现的问题和定位说明'},ctx.review?.note || '');
+        shot.append(grid,comment,h('button',{class:'pill sm',disabled:!ctx.context.confirmed,onclick:async()=>{try{state=await post('/api/quality',{action:'review',revision:ctx.revision,segment:sid.value,final:film.value,signature:ctx.signature,checks:Object.fromEntries(Object.entries(values).map(([k,v])=>[k,v.value])),note:comment.value});await renderShot();}catch(e){toast(e.message,'bad');}}},'保存人工检查'));
+        if(!ctx.context.confirmed)shot.append(h('p',{class:'s warn-t'},'请先在进度页确认此成片对应的剪辑表，再保存人工检查。'));
+        const neighbors=ctx.context.neighbors;
+        const index=neighbors.findIndex(c=>c.i===ctx.context.clip?.i);
+        if(ctx.context.confirmed && index>0)shot.append(h('button',{class:'pill sm',onclick:()=>{dialog.close();openContinuity(ctx.context,neighbors[index-1],neighbors[index]);}},'前镜尾 / 本镜头'));
+        if(ctx.context.confirmed && index>=0 && index<neighbors.length-1)shot.append(h('button',{class:'pill sm',onclick:()=>{dialog.close();openContinuity(ctx.context,neighbors[index],neighbors[index+1]);}},'本镜尾 / 后镜头'));
+      }catch(e){shot.append(h('p',{class:'err'},e.message));}
+    }
+    sid.addEventListener('change',renderShot);film.addEventListener('change',renderShot);
+    const source = select('技术质检视频',[...finals.videos,...candidates.items].map(x=>[x.path,x.path]));
+    async function refreshReports() {
+      try { const data=await api('/api/quality-reports');reports.replaceChildren();
+        data.items.forEach(r=>{const card=h('div',{class:'task-card'},h('b',{},r.path),h('p',{class:'s t3'},`${({running:'检测中',completed:'完成',failed:'失败',interrupted:'已中断'})[r.status] || r.status}${r.stale?' · 文件变化，报告需重跑':''} · ${r.at}`));
+          if(r.error)card.append(h('p',{class:'err s'},r.error));
+          if(r.metadata)card.append(h('p',{class:'s t3'},`${r.metadata.width}×${r.metadata.height} · ${r.metadata.fps}fps · 解码：${r.decode || '未通过'}${r.peak_db!=null?' · 峰值 '+r.peak_db+'dBFS':''}`));
+          if(r.status==='completed' && !r.events.length)card.append(h('p',{class:'s'},'未发现当前检测范围内的技术疑点，内容仍需人工检查。'));
+          r.events.forEach(event=>card.append(h('button',{class:'pill sm',disabled:r.stale,onclick:()=>showQualityEvidence(r,event)},`${event.type} · ${fmt(event.t)}–${fmt(event.end)}`)));
+          reports.append(card);
+        });
+      }catch(e){reports.textContent=e.message;}
+    }
+    dialog.append(h('div',{class:'review-actions'},h('b',{},'连戏与质检'),h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),
+      h('p',{class:'s t3'},'参考卡保留版本；人工连戏与成片绑定。技术检测提供疑点，不能代替审片。'),
+      h('section',{class:'quality-section'},h('h3',{},'人物 / 服装 / 道具 / 场景参考'),refs,
+        assetChoice,kind,name,image,note,h('button',{class:'pill sm',onclick:async()=>{try{state=await post('/api/quality',{action:'asset',revision:state.revision,id:assetChoice.value||null,name:name.value,kind:kind.value,image:image.value,note:note.value});error.textContent='已保存新参考版本';assetChoice.replaceChildren(h('option',{value:''},'新建参考卡'),...state.assets.map(a=>h('option',{value:a.id},a.versions.at(-1).name)));renderRefs();await renderShot();}catch(e){error.textContent=e.message;}}},'保存参考修订'),error),
+      h('section',{class:'quality-section'},h('h3',{},'镜头要求与连戏检查'),sid,film,shot),
+      h('section',{class:'quality-section'},h('h3',{},'技术质检'),h('p',{class:'s t3'},'黑帧≥0.1秒、异常静帧≥1秒、静音≥0.5秒。固定镜头与安静段可能是正常设计，请看片判断。'),source,h('button',{class:'pill sm',onclick:async()=>{try{await post('/api/quality-scan',{path:source.value});await refreshReports();}catch(e){toast(e.message,'bad');}}},'开始技术质检'),reports));
+    const timer=setInterval(refreshReports,2000);dialog.addEventListener('close',()=>{clearInterval(timer);dialog.remove();});
+    document.body.append(dialog);dialog.showModal();renderRefs();await renderShot();await refreshReports();
+  }catch(e){toast(e.message,'bad');}
+}
+function showQualityEvidence(report,event) {
+  const dialog=h('dialog',{class:'review-dialog','aria-label':'质检时间码证据'});
+  const video=h('video',{src:fileUrl(report.path),controls:true,style:'width:100%;max-height:65vh'});
+  video.addEventListener('loadedmetadata',()=>{video.currentTime=event.t;});
+  dialog.append(h('div',{class:'review-actions'},h('b',{},`${event.type} · ${fmt(event.t)}–${fmt(event.end)}`),h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),video);
+  dialog.addEventListener('close',()=>{video.pause();video.removeAttribute('src');video.load();dialog.remove();});document.body.append(dialog);dialog.showModal();
+}
+
 async function openUpscale() {
   try {
     const dialog = h('dialog', { class: 'review-dialog upscale-dialog', 'aria-label': '超分工作台' });
@@ -1851,7 +1942,7 @@ async function openEditor() {
       } catch (e) { jobs.textContent = e.message; }
     }
     const close = () => { if (!dirty || confirm('放弃尚未保存的修改？')) dialog.close(); };
-    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '初剪编辑 · v0.4.2'), h('button', { class: 'pill sm', onclick: close }, '关闭')), h('p', { class: 's t3' }, '基础顺序剪辑，导出为首镜尺寸、25fps、H.264/AAC。音量0为静音，1为原音量。不会自动沿用外部配乐、字幕、调色和特效。同步已选候选会用完整素材替换对应镜头，请重新核对入出点。'), preview, trimBar);
+    dialog.append(h('div', { class: 'review-actions' }, h('b', {}, '初剪编辑'), h('button', { class: 'pill sm', onclick: close }, '关闭')), h('p', { class: 's t3' }, '基础顺序剪辑，导出为首镜尺寸、25fps、H.264/AAC。音量0为静音，1为原音量。不会自动沿用外部配乐、字幕、调色和特效。同步已选候选会用完整素材替换对应镜头，请重新核对入出点。'), preview, trimBar);
     const toolbar = h('div', { class: 'review-actions' });
     [['import', '导入原剪辑'], ['selected', '同步已选候选'], ['save', '保存草稿'], ['undo', '撤销已保存修改'], ['redo', '重做']].forEach(([kind, text]) => toolbar.append(h('button', { class: 'pill sm', onclick: () => action(kind) }, text)));
     toolbar.append(h('button', { class: 'pill sm', onclick: () => { if (!candidates.length) return toast('请先导入素材', 'bad'); state.clips.push({ id: '镜头-' + Date.now(), src: candidates[0].path, in: 0, out: 1, a: 1 }); changed(); draw(); } }, '添加镜头'), h('button', { class: 'pill sm', onclick: async () => {
@@ -1880,7 +1971,7 @@ function tlRenderHead() {
       h('button', { class: 'pill sm', type: 'button', title: '整条放进一屏', onclick: () => tlSetPps(TL.fit, 0, $('#tlRuler').offsetLeft) }, '整条'),
       h('span', { class: 'xs t3', id: 'tlWin' }, tlWindowText()));
   }
-  hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑 · v0.4.2'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
+  hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
   hd.append(h('span', { class: 'sp' }));
   if (has) {
     if (S.cur && !S.cur.current && !d.exported) hd.append(h('span', { class: 'badge warn', title: '剪辑表只有一份，对应最新的成片' }, '时间线是当前剪辑表的，不是这一版'));
@@ -2035,6 +2126,7 @@ document.addEventListener('keydown', e => {
 async function boot() {
   try {
     S.proj = await api('/api/project');
+    $('#appVersion').textContent = 'Lazy Studio v' + S.proj.version;
     [S.finals, TL.data] = await Promise.all([api('/api/finals'), api('/api/timeline').catch(() => ({ found: false }))]);
     await loadFeedback(); tlLoadPrefs();
   } catch (e) {

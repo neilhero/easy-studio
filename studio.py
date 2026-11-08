@@ -13,6 +13,7 @@ from common import ffprobe
 import common as C
 import editing
 import upscaling
+import quality
 
 VERSION = (HERE / "VERSION").read_text(encoding="utf-8").strip()
 ROOT = pathlib.Path.cwd()
@@ -830,6 +831,12 @@ class H(BaseHTTPRequestHandler):
                 return self._json(editing.issue_location(sys.modules[__name__], q.get("id", [""])[0], q.get("final", [""])[0]))
             if path == "/api/upscale-compare":
                 return self._json(upscaling.comparison(sys.modules[__name__], q.get("id", [""])[0]))
+            if path == "/api/quality":
+                return self._json(quality.read(sys.modules[__name__]))
+            if path == "/api/quality-context":
+                return self._json(quality.context(sys.modules[__name__], q.get("segment", [""])[0], q.get("final", [""])[0]))
+            if path == "/api/quality-reports":
+                return self._json(quality.reports(sys.modules[__name__]))
             if path == "/api/upscale":
                 return self._json(upscaling.status(sys.modules[__name__]))
             if path == "/api/issues":
@@ -877,6 +884,10 @@ class H(BaseHTTPRequestHandler):
             return
         u = urllib.parse.urlsplit(self.path)
         try:
+            if u.path == "/api/quality":
+                return self._json(quality.mutate(sys.modules[__name__], self._body()))
+            if u.path == "/api/quality-scan":
+                return self._json(quality.start(sys.modules[__name__], self._body()))
             if u.path == "/api/upscale":
                 return self._json(upscaling.submit(sys.modules[__name__], self._body()))
             if u.path == "/api/upscale/cancel":
