@@ -12,6 +12,7 @@ import pathlib
 import editing
 import quality
 import review_evidence as evidence
+import workspace
 
 LOCK=threading.RLock()
 ACTIVE={}
@@ -66,6 +67,10 @@ def snapshot(app,ids,expected):
 
 
 def fresh(app,job):
+    if job.get('mode')=='inspect':
+        _,_,signature=workspace.inspection(app,job.get('source_request',job['source_kind']),job.get('source_final'),job['expected_dialogue'])
+        if signature!=job['input_signature']:raise ValueError('剪辑已修改，请检查新版；旧报告和旧成片已保留')
+        return
     _,signature=snapshot(app,[s['id'] for s in job['shots']],job['expected_dialogue'])
     if signature!=job['input_signature']:raise ValueError('镜头要求、参考或候选已变化，请创建新运行；旧证据和结果保留')
 
@@ -73,6 +78,9 @@ def fresh(app,job):
 def start(app,body):
     with LOCK:
         if ACTIVE:raise ValueError('已有自动审片流程运行中')
+        mode=body.get('mode','inspect')
+        if mode=='inspect':return start_inspection(app,body)
+        if mode!='rebuild':raise ValueError('请选择检查当前剪辑或从候选重新初剪')
         ids=body['segments'] if 'segments' in body else [r['id'] for r in app.api_segments().get('rows',[])]
         if not isinstance(ids,list) or not 1<=len(ids)<=20 or not all(isinstance(x,str) for x in ids) or len(set(ids))!=len(ids):raise ValueError('首版每次选择1—20个不重复镜头')
         expected=body.get('expected_dialogue',{})
@@ -82,7 +90,7 @@ def start(app,body):
         shots,signature=snapshot(app,ids,expected)
         if sum(len(s['candidates']) for s in shots)>100:raise ValueError('首版单次候选总数上限100')
         token=uuid.uuid4().hex
-        job={'id':token,'status':'running','stage':'准备证据','phase':'prepare','shots':shots,'input_signature':signature,
+        job={'id':token,'mode':'rebuild','status':'running','stage':'准备证据','phase':'prepare','shots':shots,'input_signature':signature,
              'expected_dialogue':expected,'threshold':threshold,'packets':[],'selection':[],'findings':[],'final':None,
              'draft_revision':editing.read(app)['revision'],'export_id':None,'error':'','updated':now(),'started':now(),'content_status':'待审'}
         save(app,job);launch(app,job)
@@ -161,7 +169,7 @@ def review_or_wait(app,job,event):
         if p['status']=='reviewed':continue
         if not command:
             with LOCK:
-                job.update(status='waiting_review',stage='等待宿主智能体审查');ACTIVE.pop(job['id'],None);save(app,job)
+                job.update(status='waiting_review',stage='等待宿主智能体审查');save(app,job);ACTIVE.pop(job['id'],None)
             return False
         args=json.loads(command)
         if not isinstance(args,list) or not args or not all(isinstance(x,str) for x in args) or not pathlib.Path(args[0]).is_absolute():raise ValueError('STUDIO_REVIEW_COMMAND须为绝对命令路径开头的JSON数组，禁止shell字符串')
@@ -175,6 +183,8 @@ def review_or_wait(app,job,event):
 def work(app,job,event):
     try:
         fresh(app,job)
+        if job.get('mode')=='inspect':
+            work_inspection(app,job,event);return
         if job['phase']=='prepare':
             for s in job['shots']:
                 for c in s['candidates']:
@@ -205,10 +215,8 @@ def work(app,job,event):
                 fresh(app,job)
                 if editing.read(app)['revision']!=job['draft_revision']:raise ValueError('草稿已被其他操作修改，请新建运行，避免覆盖编辑')
                 job['phase']='dispatching';save(app,job)
-                for c in choices:
-                    app.review_mutate({'action':'select','segment':c['id'],'path':c['src'],'fingerprint':c['source_hash']})
-                state=editing.mutate(app,{'revision':job['draft_revision'],'clips':[{k:c[k] for k in ('id','src','in','out','a')} for c in choices]})
-                export=editing.start(app,{'revision':state['revision']})
+                clips=editing.validate(app,[{k:c[k] for k in ('id','src','in','out','a')} for c in choices])
+                export=editing.start(app,{},snapshot={'revision':job['draft_revision'],'clips':clips})
                 job.update(export_id=export['id'],phase='export',stage='初剪导出');save(app,job)
         if job['phase']=='export':
             while job['export_id'] in editing.ACTIVE:
@@ -277,10 +285,108 @@ def reopen(app,body):
         p=next((p for p in job['packets'] if p['id']==body.get('packet_id')),None)
         if not p or not p.get('review'):raise ValueError('只能补充复查已有审查结果')
         if p['kind']=='candidate' and job['phase']!='candidates':raise ValueError('候选已进入导出快照，请新建运行，不能改写旧成片依据')
-        if p['kind']!='candidate' and job['phase']!='final_review':raise ValueError('当前不能复查此包')
+        if p['kind']!='candidate' and job['phase'] not in ('final_review','inspection_review'):raise ValueError('当前不能复查此包')
         note=str(body.get('note','')).strip()[:2000]
         if not note:raise ValueError('请说明补充复查原因')
         p.setdefault('review_history',[]).append({'review':p['review'],'reopened_at':now(),'note':note})
         p.update(status='pending',review=None,lease=None)
         job.update(status='waiting_review',stage='等待补充复查',content_status='待复核',findings=[]);save(app,job)
         return job
+
+
+def start_inspection(app,body):
+    expected=body.get('expected_dialogue',{})
+    if not isinstance(expected,dict) or any(not isinstance(v,str) or len(v)>4000 for v in expected.values()):raise ValueError('台词要求须为镜号到文字的对应表')
+    plan,entries,signature=workspace.inspection(app,body.get('source','current'),body.get('final'),expected)
+    if not 1<=len(entries)<=100 or plan['timeline']['total']>300:raise ValueError('当前检查支持1—100个片段、总长300秒以内')
+    if any(k not in {e['segment'] for e in entries} for k in expected):raise ValueError('台词要求中的镜号不在当前剪辑中')
+    force=body.get('segments',[])
+    if not isinstance(force,list) or any(x not in {e['segment'] for e in entries} for x in force):raise ValueError('勾选的镜头不在当前剪辑中')
+    threshold=body.get('confidence',.8)
+    if type(threshold) not in (int,float) or not math.isfinite(threshold) or not .5<=threshold<=1:raise ValueError('置信门槛须为0.5—1')
+    profile=workspace.digest({'renderer':app.file_hash(pathlib.Path(editing.__file__)),'evidence':app.file_hash(pathlib.Path(evidence.__file__))})
+    baseline=next((j for j in jobs(app) if j.get('mode')=='inspect' and j.get('profile')==profile and j['status']=='completed' and j.get('source_kind')==plan['kind'] and j.get('source_request')==body.get('source','current') and j.get('source_final')==plan['film'] and j.get('final') and app.file_hash(app.safe(j['final']))==j.get('final_hash') and j['threshold']==threshold),None)
+    if baseline and baseline['input_signature']==signature and not force and all(workspace.reusable(app,p,p.get('logical_key')) for p in baseline['packets']):return {**baseline,'reused_run':True}
+    token=uuid.uuid4().hex
+    job={'id':token,'mode':'inspect','status':'running','phase':'inspect_prepare','stage':'检查当前剪辑',
+         'shots':[e['metadata'] for e in entries],'entries':entries,'plan':plan,'source_kind':plan['kind'],'source_request':body.get('source','current'),'source_final':plan['film'],
+         'input_signature':signature,'expected_dialogue':expected,'threshold':threshold,'packets':[],'selection':[],
+         'findings':[],'final':None,'profile':profile,'draft_revision':plan['draft_revision'],'export_id':None,'error':'','updated':now(),
+         'started':now(),'content_status':'待检查','baseline_id':baseline['id'] if baseline else None,'force_segments':force}
+    if baseline and baseline['plan']['signature']==plan['signature']:
+        job.update(final=baseline['final'],final_hash=baseline['final_hash'])
+    save(app,job);launch(app,job);return job
+
+
+def work_inspection(app,job,event):
+    fresh(app,job)
+    if job['phase']=='inspect_prepare':
+        import agent_api
+        with agent_api.LOCK:
+            fresh(app,job)
+            if job['plan']['film']:
+                job.update(final=job['plan']['film'],final_hash=job['plan']['film_hash'],phase='inspect_packets')
+            elif job.get('final'):
+                job['phase']='inspect_packets'
+            else:
+                job['phase']='dispatching';save(app,job)
+                clips=editing.validate(app,job['plan']['clips'])
+                exported=editing.start(app,{},snapshot={'revision':job['draft_revision'],'clips':clips})
+                job.update(export_id=exported['id'],phase='inspect_export',stage='生成检查预览（草稿保留）')
+            save(app,job)
+    if job['phase']=='inspect_export':
+        while job['export_id'] in editing.ACTIVE:
+            if event.wait(.1):
+                if job['export_id'] in editing.ACTIVE:editing.cancel(app,{'id':job['export_id']})
+                raise editing.ExportCancelled('已取消检查')
+        exported=next(x for x in editing.jobs(app) if x['id']==job['export_id'])
+        if exported['status']!='completed':raise ValueError('检查预览未完成：'+exported.get('error',''))
+        job.update(final=exported['final'],final_hash=app.file_hash(app.safe(exported['final'])),phase='inspect_packets');save(app,job)
+    if job['phase']=='inspect_packets':
+        baseline=get(app,job['baseline_id']) if job.get('baseline_id') else None
+        profile=job['profile']
+        entries=job['entries'];tl=job['plan']['timeline'];duration=app.probe(app.safe(job['final']))['duration']
+        specs=[]
+        for e,c in zip(entries,tl['V']):
+            # 每镜使用实际预览/成片范围，包含当前音量；不检查未入片候选。
+            specs.append((f"current:{e['index']}",'current',c['start'],min(duration,c['start']+c['dur']),e['metadata'],e['metadata']['expected_dialogue'],
+                          workspace.digest({'clip':e['key'],'profile':profile}),e['segment'] in job['force_segments'],e['segment']))
+        for i in range(1,len(entries)):
+            cut=tl['V'][i]['start'];left,right=entries[i-1],entries[i]
+            specs.append((f'seam:{i}','seam',max(tl['V'][i-1]['start'],cut-1),min(duration,cut+min(1,tl['V'][i]['dur'])),{'left_shot':left['metadata'],'right_shot':right['metadata']},'',
+                          workspace.digest({'left':left['key'],'right':right['key'],'profile':profile}),bool({left['segment'],right['segment']}&set(job['force_segments'])),None))
+        specs.append(('full','final',0,duration,{'scope':'当前剪辑全片复查','shots':job['shots']},' '.join(s['expected_dialogue'] for s in job['shots'] if s['expected_dialogue']),None,True,None))
+        for slot,kind,start,end,requirement,expected,key,forced,sid in specs:
+            if any(p.get('inspection_slot')==slot for p in job['packets']):continue
+            fresh(app,job)
+            previous=next((p for p in baseline['packets'] if workspace.reusable(app,p,key)),None) if baseline and key and not forced else None
+            if previous:
+                p=workspace.copy_review(previous,baseline['id']);p['current_range']=[start,end]
+            else:
+                job['stage']='检查改动镜头和相邻接缝' if baseline else '检查当前镜头与接缝';save(app,job)
+                p=evidence.make(app,job['id'],job['final'],start,end,kind,requirement,expected,event)
+            p.update(inspection_slot=slot,logical_key=key,segment=sid)
+            job['packets'].append(p);save(app,job)
+        job.update(phase='inspection_review',stage='等待检查结果');save(app,job)
+    if job['phase']=='inspection_review':
+        if not review_or_wait(app,job,event):return
+        fresh(app,job)
+        if app.file_hash(app.safe(job['final']))!=job['final_hash']:raise ValueError('检查预览已变化，请检查新版')
+        failures=[p for p in job['packets'] if not p['review']['eligible']]
+        job['findings']=[{'packet_id':p['id'],'type':p['kind'],'note':p['review']['reason']} for p in failures]
+        job.update(status='needs_decision' if failures else 'completed',stage='有问题，请查看检查报告' if failures else '当前剪辑检查完成',content_status='需修' if failures else '已检查，待你确认')
+        save(app,job)
+
+
+def apply_suggestion(app,body):
+    import agent_api
+    with agent_api.LOCK,LOCK:
+        job=get(app,body.get('run_id'));fresh(app,job)
+        if job.get('mode','rebuild')!='rebuild' or job['status']!='completed':raise ValueError('只有检查完成的重剪建议才能采用')
+        if app.file_hash(app.safe(job['final']))!=job.get('final_hash'):raise ValueError('建议成片已变化，请重新检查')
+        state=editing.read(app)
+        if body.get('draft_revision')!=state['revision'] or state['revision']!=job['draft_revision']:raise ValueError('当前草稿另有修改，请先对比，不能直接覆盖')
+        clips=[{k:c[k] for k in ('id','src','in','out','a')} for c in job['selection']]
+        state=editing.mutate(app,{'revision':state['revision'],'clips':clips})
+        job['applied_revision']=state['revision'];save(app,job)
+        return {'revision':state['revision'],'note':'已采用建议，原草稿可用撤销恢复'}

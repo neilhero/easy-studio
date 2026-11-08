@@ -808,7 +808,7 @@ body { -webkit-font-smoothing:antialiased; }
 .pill.sm { min-height:29px; padding-inline:12px; }
 .pill:hover:not(:disabled) { border-color:var(--acc); background:var(--acc-soft); }
 .pill.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
-.pill.primary:hover { filter:brightness(1.08); }
+.pill.primary:hover:not(:disabled) { background:var(--acc); color:#fff; filter:brightness(1.08); }
 .seg { padding:3px; background:var(--island-3); border-radius:11px; }
 .seg button { border-radius:8px; min-height:28px; }
 .search { height:36px; border-radius:11px; background:var(--island); border-color:var(--line-2); transition:border-color .18s,box-shadow .18s; }
@@ -890,7 +890,7 @@ body { -webkit-font-smoothing:antialiased; }
     <button class="i" type="button" data-view="progress" title="进度"><span class="ic"></span><span class="l">进度</span></button>
     <button class="i" type="button" data-view="library" title="素材库"><span class="ic"></span><span class="l">素材库</span></button>
     <button class="i" type="button" id="qualityBtn" title="连戏与质检"><span class="ic"></span><span class="l">质检</span></button>
-    <button class="i" type="button" id="automationBtn" title="自动审片与初剪"><span class="ic"></span><span class="l">自动初剪</span></button>
+    <button class="i" type="button" id="automationBtn" title="镜头与候选"><span class="ic"></span><span class="l">镜头与候选</span></button>
     <button class="i" type="button" id="tasksBtn" title="统一任务"><span class="ic"></span><span class="l">任务</span></button>
     <span class="sp"></span>
     <button class="i drawerbtn" type="button" id="drawerBtn" title="打开面板" aria-pressed="false"><span class="ic"></span><span class="l">面板</span></button>
@@ -1694,43 +1694,93 @@ function tlInit() {
 }
 /* v0.3：草稿独立于当前审片时间线，只有导出后成为新成片。 */
 $('#automationBtn').addEventListener('click', async () => {
-  const dialog=h('dialog',{class:'review-dialog','aria-label':'自动审片与初剪'}),body=h('div');
-  const notes=h('p',{class:'s t3'},'流程：证据与转写 → 候选审查 → 自动初剪 → 接缝与全片复查。未配置审查命令时等待宿主智能体通过MCP认领；不会把未审内容自动判为通过。');
-  const selected=new Set();
-  const segments=await api('/api/segments');
-  const choices=h('div',{class:'upscale-sources'},...(segments.rows || []).map(r=>h('label',{class:'upscale-source'},h('input',{type:'checkbox',onchange:e=>e.target.checked?selected.add(r.id):selected.delete(r.id)}),r.id+' · '+r.scene)));
+  const dialog=h('dialog',{class:'review-dialog','aria-label':'镜头与候选'}),body=h('div'),selected=new Set();
+  let workspace=null,sourceKind='current',sourceFinal=S.cur?.path || '',workspaceSignature='',refreshing=false,starting=false;
+  const sourceLabel=h('p',{class:'s'}),sourceSelect=h('select',{'aria-label':'检查哪个版本',class:'pill'});
+  const choices=h('div',{class:'upscale-sources'});
   const expected=h('textarea',{class:'textarea','aria-label':'预期台词JSON',placeholder:'可选：{"S1":"这一镜的准确台词"}',style:'width:100%;min-height:60px'});
-  async function refresh(){
+  const inspect=h('button',{class:'pill primary',onclick:()=>begin('inspect')},'检查当前剪辑');
+  const rebuild=h('button',{class:'pill',onclick:()=>begin('rebuild')},'从候选重新初剪');
+  async function loadWorkspace(){
+    const requested=sourceKind+'|'+sourceFinal;
+    const data=await api('/api/workspace?source='+encodeURIComponent(sourceKind)+'&final='+encodeURIComponent(sourceFinal));
+    if(requested!==sourceKind+'|'+sourceFinal)return;
+    workspace=data;
+    sourceLabel.textContent=workspace.error || ('检查对象：'+workspace.source.label+'。手动换片后，请先保存草稿。');
+    inspect.disabled=starting || !!workspace.error;
+    const signature=JSON.stringify(workspace);
+    if(signature===workspaceSignature)return;
+    workspaceSignature=signature;
+    const alternatives=[{kind:'current',final:sourceFinal,label:'自动跟随：已保存草稿优先'},...workspace.alternatives];
+    if(workspace.source?.kind==='legacy')alternatives.push({kind:'legacy',final:'',label:'已有剪辑表'});
+    sourceSelect.replaceChildren(...alternatives.map((a,i)=>h('option',{value:String(i)},a.label)));
+    sourceSelect.value=String(Math.max(0,alternatives.findIndex(a=>a.kind===sourceKind && (a.kind!=='final' || a.final===sourceFinal))));
+    sourceSelect.onchange=async()=>{const a=alternatives[Number(sourceSelect.value)];sourceKind=a.kind;sourceFinal=a.final || '';selected.clear();workspaceSignature='';try{await loadWorkspace();}catch(e){toast(e.message,'bad');}};
+    choices.replaceChildren(...workspace.shots.map(r=>h('label',{class:'upscale-source',style:'align-items:flex-start'},
+      h('input',{type:'checkbox',checked:selected.has(r.id),onchange:e=>e.target.checked?selected.add(r.id):selected.delete(r.id)}),
+      h('div',{},h('b',{},r.id+' · '+r.scene),...r.uses.map(u=>h('p',{class:'s',style:'margin:4px 0;overflow-wrap:anywhere'},`正在使用：${u.src.split('/').pop()} · 源片 ${u.in.toFixed(2)}–${u.out.toFixed(2)} 秒`)),
+        h('p',{class:'xs t3',style:'margin:4px 0'},r.uses.length?`备用候选 ${r.spare_count} 个`:`未在这版剪辑中 · 候选 ${r.candidate_count} 个`)))));
+  }
+  async function begin(mode){
+    if(starting)return;starting=true;
+    inspect.disabled=true;rebuild.disabled=true;
     try{
+      await loadWorkspace();
+      const dialogue=expected.value.trim()?JSON.parse(expected.value):{};
+      if(mode==='rebuild' && !selected.size){toast('请先勾选要重新初剪的镜头','bad');return;}
+      if(mode==='inspect' && workspace.error){toast(workspace.error,'bad');return;}
+      const ids=workspace.shots.filter(r=>selected.has(r.id)).map(r=>r.id);
+      if(mode==='inspect' && ids.some(id=>!workspace.shots.some(r=>r.id===id && r.uses.length))){toast('勾选的镜头未在当前剪辑中，请取消勾选后检查','bad');return;}
+      const result=await post('/api/automation',{mode,source:sourceKind,final:sourceFinal || undefined,segments:ids,expected_dialogue:dialogue});
+      toast(result.reused_run?'剪辑没有变化，已显示上次检查结果':mode==='inspect'?'已开始检查，草稿保留':'已开始另存初剪建议，草稿保留');
+      await refresh();
+    }catch(e){toast(e.message,'bad');}
+    finally{starting=false;inspect.disabled=!!workspace?.error;rebuild.disabled=false;}
+  }
+  async function refresh(){
+    if(refreshing)return;refreshing=true;
+    try{
+      await loadWorkspace();
       const data=await api('/api/automation');body.replaceChildren();
-      if(!data.items.length)body.append(h('p',{class:'s t3'},'暂无运行。选择已关联候选的镜头后开始。'));
+      if(!data.items.length)body.append(h('p',{class:'s t3'},'暂无检查记录。保存剪辑后，可直接点击“检查当前剪辑”。'));
       data.items.forEach(j=>{
-        const card=h('div',{class:'task-card'},h('div',{class:'task-heading'},h('b',{},'自动初剪 · '+j.id.slice(0,8)),h('span',{class:'badge'},j.stage)),h('p',{class:'s t3'},`${j.shots.length} 镜 · ${j.packets.filter(p=>p.status==='reviewed').length}/${j.packets.length} 份证据已审 · ${j.content_status}`));
-        if(j.input_stale)card.append(h('p',{class:'s warn-t'},'输入变化，需新运行：'+j.stale_reason));
+        const isInspect=j.mode==='inspect';
+        const card=h('div',{class:'task-card'},h('div',{class:'task-heading'},h('b',{},(isInspect?'当前剪辑检查':'重新初剪建议')+' · '+j.id.slice(0,8)),h('span',{class:'badge'},j.stage)),h('p',{class:'s t3'},`${j.shots.length} 镜 · ${j.packets.filter(p=>p.status==='reviewed').length}/${j.packets.length} 份检查已完成 · ${j.content_status}`));
+        if(j.input_stale)card.append(h('p',{class:'s warn-t'},isInspect?'剪辑已修改，请检查新版。这里保留的是旧版报告。':j.stale_reason));
         if(j.error)card.append(h('p',{class:'err s'},j.error));
-        if(j.status==='waiting_review')card.append(h('p',{class:'s'},'等待实际审查：智能体调用 automation.claim → automation.packet 查看证据 → automation.submit；没有完成的观看或试听保持待审。'));
-        j.selection.forEach(c=>card.append(h('p',{class:'s'},`${c.id} · ${c.src} · ${c.in.toFixed(2)}–${c.out.toFixed(2)}s · ${c.reason}`)));
+        if(j.status==='waiting_review')card.append(h('p',{class:'s'},'检查资料已备好，等待智能体实际看片、听声音；完成前保持待审。'));
+        j.selection.forEach(c=>card.append(h('p',{class:'s'},`${c.id} · ${c.src.split('/').pop()} · ${c.in.toFixed(2)}–${c.out.toFixed(2)} 秒 · ${c.reason}`)));
         [...j.findings,...(j.problems||[])].slice(0,30).forEach(x=>card.append(h('p',{class:'s warn-t'},`${x.segment||''} ${x.type} · ${x.note || (fmt(x.t)+'–'+fmt(x.end))}`)));
         const actions=h('div',{class:'review-actions'});
-        if(j.final)actions.append(h('a',{href:fileUrl(j.final),target:'_blank',class:'pill sm'},'查看初剪'));
-        if(['waiting_review','interrupted','failed','needs_decision'].includes(j.status))actions.append(h('button',{class:'pill sm',onclick:async()=>{try{await post('/api/automation/resume',{run_id:j.id});await refresh();}catch(e){toast(e.message,'bad');}}},'续接此运行'));
+        if(j.final)actions.append(h('a',{href:fileUrl(j.final),target:'_blank',class:'pill sm'},isInspect?'查看检查版本':'查看初剪建议'));
+        if(!isInspect && j.status==='completed' && !j.applied_revision && !j.input_stale)actions.append(h('button',{class:'pill sm',onclick:async()=>{
+          if(!confirm('采用这版建议为当前草稿？原草稿可在初剪编辑中撤销恢复。'))return;
+          try{const draft=await api('/api/edit');await post('/api/automation/apply',{run_id:j.id,draft_revision:draft.revision});toast('已采用建议，原草稿可撤销恢复');await refresh();}catch(e){toast(e.message,'bad');}
+        }},'采用为当前草稿'));
+        if(j.applied_revision)actions.append(h('span',{class:'s t3'},'已采用为草稿'));
+        if(!j.input_stale && ['waiting_review','interrupted','failed','needs_decision'].includes(j.status))actions.append(h('button',{class:'pill sm',onclick:async()=>{try{await post('/api/automation/resume',{run_id:j.id});await refresh();}catch(e){toast(e.message,'bad');}}},'继续这次检查'));
         if(!['completed','cancelled'].includes(j.status))actions.append(h('button',{class:'pill sm',onclick:async()=>{try{await post('/api/automation/cancel',{run_id:j.id});await refresh();}catch(e){toast(e.message,'bad');}}},'取消运行'));
         card.append(actions);
         j.packets.forEach(p=>{
-          card.append(h('button',{class:'pill sm',onclick:()=>showAutoPacket(p)},`${p.kind==='candidate'?(p.segment+' 候选'):p.kind==='seam'?'接缝复查':'全片复查'} · ${p.status==='reviewed'?(p.review.eligible?'建议可用':'需修/待定'):'待审'}`));
-          if(p.review && ((p.kind==='candidate' && j.phase==='candidates') || (p.kind!=='candidate' && j.phase==='final_review')))card.append(h('button',{class:'pill sm',onclick:async()=>{const note=prompt('补充复查的原因');if(!note)return;try{await post('/api/automation/reopen',{run_id:j.id,packet_id:p.id,note});await refresh();}catch(e){toast(e.message,'bad');}}},'补充复查'));
+          const label=p.kind==='candidate'?(p.segment+' 候选'):p.kind==='current'?(p.segment+' 当前片段'):p.kind==='seam'?'相邻接缝':'全片复查';
+          card.append(h('button',{class:'pill sm',onclick:()=>showAutoPacket(p)},`${label} · ${p.reused_from?'沿用上次检查':p.status==='reviewed'?(p.review.eligible?'建议可用':'需修/待定'):'待审'}`));
+          if(!j.input_stale && p.review && ((p.kind==='candidate' && j.phase==='candidates') || (p.kind!=='candidate' && ['final_review','inspection_review'].includes(j.phase))))card.append(h('button',{class:'pill sm',onclick:async()=>{const note=prompt('补充复查的原因');if(!note)return;try{await post('/api/automation/reopen',{run_id:j.id,packet_id:p.id,note});await refresh();}catch(e){toast(e.message,'bad');}}},'补充复查'));
         });
         body.append(card);
       });
     }catch(e){body.textContent=e.message;}
+    finally{refreshing=false;}
   }
-  dialog.append(h('div',{class:'review-actions'},h('b',{},'自动审片与初剪'),h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),notes,choices,expected,h('button',{class:'pill primary',onclick:async()=>{try{if(!selected.size)return toast('请先选择镜头','bad');await post('/api/automation',{segments:[...selected],expected_dialogue:expected.value.trim()?JSON.parse(expected.value):{}});await refresh();}catch(e){toast(e.message,'bad');}}},'开始自动流程'),body);
-  const timer=setInterval(refresh,2000);dialog.addEventListener('close',()=>{clearInterval(timer);dialog.remove();});document.body.append(dialog);dialog.showModal();await refresh();
+  dialog.append(h('div',{class:'review-actions'},h('b',{},'镜头与候选'),h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),
+    h('p',{class:'s t3'},'检查当前剪辑：保留你的选片和切点，优先复查改动镜头与相邻接缝，再检查全片。重新初剪：对勾选镜头重新挑候选，另存一版，等你决定是否采用。'),
+    sourceSelect,sourceLabel,choices,h('p',{class:'xs t3'},'不勾选：按改动自动检查。勾选：强制复查这些镜头，或用它们重新初剪。'),expected,h('div',{class:'review-actions'},inspect,rebuild),body);
+  const timer=setInterval(refresh,3000);dialog.addEventListener('close',()=>{clearInterval(timer);dialog.remove();});document.body.append(dialog);dialog.showModal();await refresh();
 });
 function showAutoPacket(p){
   const dialog=h('dialog',{class:'review-dialog','aria-label':'自动审片证据包'});
   const video=h('video',{src:fileUrl(p.clip.path),controls:true,style:'width:100%;max-height:40vh'});
   dialog.append(h('div',{class:'review-actions'},h('b',{},p.kind+' · '+p.source),h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),h('p',{class:'s t3'},`${p.frames.length}帧采样，间隔约${p.coverage.sampling_interval_seconds}秒。视频证据源范围${fmt(p.range[0])}–${fmt(p.range[1])}；采样不代表动作检查，转写不代表试听。`),video);
+  if(p.reused_from)dialog.append(h('p',{class:'s'},`该片段未改动，沿用上次报告；下方播放的是旧版检查证据。当前版本位置：${fmt(p.current_range[0])}–${fmt(p.current_range[1])}。新版全片会另行复查。`));
   if(p.reference_images?.length)dialog.append(h('div',{class:'reference-list'},...p.reference_images.map(r=>h('div',{},h('img',{src:fileUrl(r.path),style:'width:100%;max-height:120px;object-fit:contain',alt:r.name}),h('p',{class:'xs t3'},r.id+' · '+r.name+' v'+r.version)))));
   const grid=h('div',{class:'reference-list'},...p.frames.map(f=>h('div',{},h('img',{src:fileUrl(f.path),style:'width:100%',alt:f.id}),h('p',{class:'xs t3'},f.id+' · '+fmt(f.t)))));dialog.append(grid);
   if(p.audio)dialog.append(h('audio',{src:fileUrl(p.audio.path),controls:true}));

@@ -56,7 +56,7 @@ class AutomationTests(unittest.TestCase):
         return flow.get(app,identity)
 
     def test_host_review_to_rough_cut_then_seam_and_full_recheck(self):
-        job=self.call('automation.start',{'segments':['S1','S2']})['result'];job=self.wait(job['id'])
+        job=self.call('automation.start',{'mode':'rebuild','segments':['S1','S2']})['result'];job=self.wait(job['id'])
         self.assertEqual(job['status'],'waiting_review',job['error'])
         self.assertEqual(len(job['packets']),3)
         first=True
@@ -87,7 +87,7 @@ class AutomationTests(unittest.TestCase):
         self.assertEqual(next(p for p in reopened['packets'] if p['id']==final['id'])['review_history'][0]['note'],'补充试听')
 
     def test_scope_confidence_lease_and_changed_source_are_not_bypassed(self):
-        job=self.wait(flow.start(app,{'segments':['S1']})['id']);claimed=flow.claim(app,{'run_id':job['id'],'actor':'one'});p=claimed['packet']
+        job=self.wait(flow.start(app,{'mode':'rebuild','segments':['S1']})['id']);claimed=flow.claim(app,{'run_id':job['id'],'actor':'one'});p=claimed['packet']
         self.assertIsNotNone(p)
         bad=review_stub(p);bad['watched_ranges']=[]
         with self.assertRaises(ValueError):ev.validate(p,bad,.8)
@@ -99,7 +99,7 @@ class AutomationTests(unittest.TestCase):
         with self.assertRaises(ValueError):flow.submit(app,{'run_id':job['id'],'packet_id':p['id'],'lease_token':p['lease']['token'],'signature':p['signature'],'result':review_stub(p)})
 
     def test_user_draft_edit_is_never_overwritten(self):
-        job=self.wait(flow.start(app,{'segments':['S2']})['id'])
+        job=self.wait(flow.start(app,{'mode':'rebuild','segments':['S2']})['id'])
         editing.mutate(app,{'revision':0,'clips':[{'id':'manual','src':'素材库/0.mp4','in':0,'out':.4,'a':1}]})
         p=flow.claim(app,{'run_id':job['id'],'actor':'host'})['packet']
         flow.submit(app,{'run_id':job['id'],'packet_id':p['id'],'signature':p['signature'],'lease_token':p['lease']['token'],'result':review_stub(p)})
@@ -109,7 +109,7 @@ class AutomationTests(unittest.TestCase):
         self.assertEqual(editing.read(app)['clips'][0]['id'],'manual')
 
     def test_full_review_cannot_pass_without_continuous_video_and_sound(self):
-        job=self.wait(flow.start(app,{'segments':['S2']})['id']);p=copy.deepcopy(job['packets'][0])
+        job=self.wait(flow.start(app,{'mode':'rebuild','segments':['S2']})['id']);p=copy.deepcopy(job['packets'][0])
         p['kind']='final';r=review_stub(p)
         r['checks']['action']['status']='na';r['watched_ranges']=[]
         self.assertFalse(ev.validate(p,r,.8)['eligible'])
@@ -117,7 +117,7 @@ class AutomationTests(unittest.TestCase):
         with self.assertRaises(ValueError):ev.validate(p,review_stub(p),.8)
 
     def test_packet_tampering_draft_conflict_and_unknown_export_window(self):
-        job=self.wait(flow.start(app,{'segments':['S2']})['id']);p=job['packets'][0]
+        job=self.wait(flow.start(app,{'mode':'rebuild','segments':['S2']})['id']);p=job['packets'][0]
         app.safe(p['frames'][0]['path']).write_bytes(b'tampered')
         with self.assertRaises(ValueError):flow.claim(app,{'run_id':job['id'],'actor':'host'})
         job['phase']='dispatching';job['status']='running';flow.save(app,job)
@@ -132,7 +132,7 @@ class AutomationTests(unittest.TestCase):
             'r={"model":"TEST-COMMAND/1","reason":"fixture","score":90,"usable":p["range"],"watched_ranges":[p["range"]],"listened_ranges":[p["range"]] if p["audio"] else [],"technical_disposition":"fixture",'+
             '"checks":{k:{"status":"pass","confidence":.95,"evidence":["clip"],"note":"fixture"} for k in ("identity","props","direction","action","dialogue")}}\nprint(json.dumps(r))\n')
         os.environ['STUDIO_REVIEW_COMMAND']=json.dumps([sys.executable,str(script)])
-        job=self.wait(flow.start(app,{'segments':['S2']})['id'])
+        job=self.wait(flow.start(app,{'mode':'rebuild','segments':['S2']})['id'])
         self.assertEqual(job['status'],'completed',job['error'])
         self.assertTrue(all(p['review']['actor']=='configured-command' for p in job['packets']))
         # 明确台词要求不能被NA绕过；即使无声也须判待审/需修。

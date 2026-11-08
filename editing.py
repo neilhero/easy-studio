@@ -152,18 +152,18 @@ def jobs(app):
     return result
 
 
-def start(app, body):
+def start(app, body, *, snapshot=None):
     with LOCK:
         if ACTIVE:
             raise ValueError('已有导出任务正在运行')
-        state = read(app)
+        state = snapshot if snapshot is not None else read(app)
         retry = body.get('retry')
         if retry:
             old = next((j for j in jobs(app) if j['id'] == retry), None)
             if not old or old['status'] not in ('failed', 'cancelled'):
                 raise ValueError('只能重试失败或已取消的任务')
             state = {'revision': old['revision'], 'clips': old['clips']}
-        elif body.get('revision') != state['revision']:
+        elif snapshot is None and body.get('revision') != state['revision']:
             raise ValueError('请先保存最新草稿')
         clips = validate(app, state['clips'])
         if not clips:

@@ -119,3 +119,12 @@ python3 run.py --root '/项目目录' --port 8790 --import-root '/允许导入�
 ## v0.7新增
 
 支持automation.start/list/get/packet/claim/submit/resume/cancel/evaluate；契约见[AUTOMATIC-REVIEW.md](AUTOMATIC-REVIEW.md)。流程中的候选与全片都需要真实审查；waiting_review不等于已完成。MCP的automation.packet返回采样图，完整动作/声音须在支持视频/声音的宿主中实际检查。
+
+
+## v0.7.1 当前剪辑检查
+
+`automation.workspace`只读返回当前使用素材、入出点、备用数量及可选版本；可传`source`和`final`。
+`automation.start`现在默认`mode: "inspect"`：跟随已保存草稿，`segments`用于强制复查指定镜头，不传或空数组表示自动按变化检查。
+如需旧版重新选片行为，必须显式传`mode: "rebuild"`，`segments`为参与初剪的镜头。建议另存，原草稿及原选片记录保留。
+完成建议可用`automation.apply`（`run_id`、`draft_revision`）显式采用为草稿；原草稿可撤销，期间有修改则拒绝覆盖。
+详细范围、缓存及历史报告行为见[AUTOMATIC-REVIEW.md](AUTOMATIC-REVIEW.md)。

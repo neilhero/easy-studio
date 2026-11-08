@@ -16,10 +16,12 @@ import editing
 import quality
 import upscaling
 import automation
+import workspace
 
 LOCK = threading.RLock()
 API_VERSION = '1'
 READS = {
+    'automation.workspace':'当前镜头与候选：当前使用素材、入出点、备用数量和可选工作版本',
     'automation.evaluate':'run_id与人工labels数组(packet_id/check/expected)，统计误报、漏报和决定覆盖率，不推算未标注准确率',
     'automation.list':'列出自动审片运行及候选/接缝/全片复查状态',
     'automation.get':'run_id，读取运行快照、选片理由和未决问题',
@@ -38,7 +40,8 @@ READS = {
     'timeline.get':'读取指定final的冻结快照，省略final时读取当前剪辑',
 }
 WRITES = {
-    'automation.start':'segments段号数组，expected_dialogue台词映射可选，confidence默认0.8；自动准备审片证据与初剪流程',
+    'automation.apply':'run_id/draft_revision，显式采用已复查的重剪建议；草稿另有修改时拒绝覆盖',
+    'automation.start':'mode默认inspect检查当前剪辑；rebuild才重新选片。source=current/draft/final/legacy，final可选；segments勾选时强制复查指定镜头；expected_dialogue/confidence可选',
     'automation.claim':'run_id/actor；认领一份待审证据，返回15分钟租约与要求',
     'automation.submit':'run_id/packet_id/lease_token/signature/result；提交实际审查范围、逐项判断与选片评分',
     'automation.reopen':'run_id/packet_id/note，保留旧判断并补充复查；不改写已导出候选依据',
@@ -234,6 +237,7 @@ def dispatch(app,body):
 
 
 def read_operation(app,db,op,args):
+    if op=='automation.workspace':return workspace.overview(app,args.get('final'),args.get('source','current'))
     if op=='automation.evaluate':return automation.evaluate(app,args)
     if op=='automation.list':return {'items':automation.jobs(app)}
     if op=='automation.get':return automation.get(app,args.get('run_id'))
@@ -271,6 +275,7 @@ def read_operation(app,db,op,args):
 
 
 def write_operation(app,db,op,args):
+    if op=='automation.apply':return automation.apply_suggestion(app,args)
     if op=='automation.start':return automation.start(app,args)
     if op=='automation.claim':return automation.claim(app,args)
     if op=='automation.submit':return automation.submit(app,args)

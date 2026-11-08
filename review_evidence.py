@@ -97,7 +97,7 @@ def make(app,run_id,path,start,end,kind,requirements,expected,event):
             normalize=lambda s:''.join(re.findall(r'[\w]',s))
             sound['dialogue_hint']={'expected':expected,'transcribed':text,'similarity':difflib.SequenceMatcher(None,normalize(expected),normalize(text)).ratio(),'scope':'文字疑点，仅供复核，不代替试听'}
     if app.file_hash(source)!=fingerprint:raise ValueError('生成证据期间原片变化')
-    report={**report,'events':[e for e in report['events'] if e['t']<end and e['end']>start],'evidence_range':[start,end]}
+    report={**report,'events':[{**e,'t':max(start,e['t']),'end':min(end,e['end'])} for e in report['events'] if e['t']<end and e['end']>start],'evidence_range':[start,end]}
     refs=requirements.get('references',[]) + [r for s in requirements.get('shots',[]) for r in s.get('references',[])]
     refs += [r for k in ('left_shot','right_shot') for r in requirements.get(k,{}).get('references',[])]
     reference_images=[{'id':f'reference-{i}','path':r['image'],'fingerprint':r['fingerprint'],'name':r['name'],'version':r['version']} for i,r in enumerate(refs)]
