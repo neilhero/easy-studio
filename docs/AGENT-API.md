@@ -114,3 +114,8 @@ python3 run.py --root '/项目目录' --port 8790 --import-root '/允许导入�
 本次升级已按[OpenAI Docs的MCP配置方式](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)使用 `codex mcp add lazy-studio -- <Python> <代理路径> --url <本机服务> --token-file <令牌文件路径>` 新增连接，并通过 `codex mcp get lazy-studio --json` 核对。配置只存令牌文件路径，不把令牌文本写进命令或Git。
 
 该注册不等于当前聊天已热加载工具。新建本机Codex聊天或重新连接后，以是否发现studio_project/studio_call并能成功查询为准；本次已另用真实MCP进程对正式服务完成只读握手和项目查询。服务须保持运行，才能执行任务。
+
+
+## v0.7新增
+
+支持automation.start/list/get/packet/claim/submit/resume/cancel/evaluate；契约见[AUTOMATIC-REVIEW.md](AUTOMATIC-REVIEW.md)。流程中的候选与全片都需要真实审查；waiting_review不等于已完成。MCP的automation.packet返回采样图，完整动作/声音须在支持视频/声音的宿主中实际检查。

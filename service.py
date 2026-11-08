@@ -13,7 +13,7 @@ import time
 import urllib.request
 
 HERE=pathlib.Path(__file__).resolve().parent
-MEDIA_ENV=('FFMPEG_BIN','FFPROBE_BIN','REALESRGAN_BIN','REALESRGAN_MODELS','PYTHONPYCACHEPREFIX')
+MEDIA_ENV=('FFMPEG_BIN','FFPROBE_BIN','REALESRGAN_BIN','REALESRGAN_MODELS','PYTHONPYCACHEPREFIX','STUDIO_ASR_PYTHON','STUDIO_ASR_MODEL','STUDIO_REVIEW_COMMAND')
 
 
 def config(root,port,imports,python=sys.executable,environment=None):
@@ -93,7 +93,7 @@ def main():
         data=probe(a.root,a.port)
         print(json.dumps({'loaded':launch('print',target,check=False).returncode==0,'running':bool(data),'version':data.get('version') if data else None,'plist':str(file)},ensure_ascii=False));return
     if a.action=='stop':
-        for endpoint in ('exports','upscale','quality-reports'):
+        for endpoint in ('exports','upscale','quality-reports','tasks'):
             if not probe(a.root,a.port):break
             with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(f'http://127.0.0.1:{a.port}/api/{endpoint}',timeout=5) as response:info=json.load(response)
             if any(j['status'] in ('queued','running') for j in info.get('jobs',info.get('items',[]))):raise ValueError('有任务未结束，先等待或取消任务')

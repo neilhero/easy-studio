@@ -15,6 +15,7 @@ import editing
 import upscaling
 import quality
 import agent_api
+import automation
 import hmac
 
 VERSION = (HERE / "VERSION").read_text(encoding="utf-8").strip()
@@ -839,6 +840,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(agent_api.project(sys.modules[__name__]))
             if path == "/api/tasks":
                 return self._json(agent_api.dispatch(sys.modules[__name__], {"operation":"tasks.list","arguments":{"limit":200}})["result"])
+            if path == "/api/automation":
+                return self._json({"items":automation.jobs(sys.modules[__name__])})
             if path == "/api/quality":
                 return self._json(quality.read(sys.modules[__name__]))
             if path == "/api/quality-context":
@@ -915,6 +918,14 @@ class H(BaseHTTPRequestHandler):
             return
         u = urllib.parse.urlsplit(self.path)
         try:
+            if u.path == "/api/automation":
+                return self._json(automation.start(sys.modules[__name__],self._body()))
+            if u.path == "/api/automation/reopen":
+                return self._json(automation.reopen(sys.modules[__name__],self._body()))
+            if u.path == "/api/automation/resume":
+                return self._json(automation.resume(sys.modules[__name__],self._body().get("run_id")))
+            if u.path == "/api/automation/cancel":
+                return self._json(automation.cancel(sys.modules[__name__],self._body().get("run_id")))
             if u.path == "/api/quality":
                 return self._json(quality.mutate(sys.modules[__name__], self._body()))
             if u.path == "/api/quality-scan":

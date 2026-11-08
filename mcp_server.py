@@ -53,11 +53,18 @@ def handle(message,url,token,initialized):
             elif params.get('name')=='studio_call':result=request(url,token,'/api/agent/call',args)
             else:raise ValueError('工具不存在')
             content=[{'type':'text','text':json.dumps(result,ensure_ascii=False)}]
-            if params.get('name')=='studio_call' and args.get('operation')=='evidence.extract' and result.get('result',{}).get('path'):
+            if params.get('name')=='studio_call' and args.get('operation') in ('evidence.extract','automation.image') and result.get('result',{}).get('path'):
                 path=result['result']['path']
                 req=urllib.request.Request(url+'/f/'+urllib.parse.quote(path),headers={'Authorization':'Bearer '+token})
                 with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req,timeout=30) as response:data=response.read(4000001)
-                if len(data)<=4000000:content.append({'type':'image','data':base64.b64encode(data).decode(),'mimeType':'image/png'})
+                if len(data)<=4000000:content.append({'type':'image','data':base64.b64encode(data).decode(),'mimeType':result['result'].get('mime_type','image/png')})
+            if params.get('name')=='studio_call' and args.get('operation')=='automation.packet':
+                for frame in result.get('result',{}).get('frames',[])[:12]:
+                    req=urllib.request.Request(url+'/f/'+urllib.parse.quote(frame['path']))
+                    with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req,timeout=30) as response:data=response.read(1000001)
+                    if len(data)<=1000000:
+                        content.append({'type':'text','text':frame['id']+' @ '+str(frame['t'])+'s'})
+                        content.append({'type':'image','data':base64.b64encode(data).decode(),'mimeType':'image/jpeg'})
             return {'content':content,'structuredContent':result,'isError':False},initialized
         except Exception as e:
             return {'content':[{'type':'text','text':str(e)}],'isError':True},initialized

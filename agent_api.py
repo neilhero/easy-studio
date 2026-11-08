@@ -15,10 +15,16 @@ import datetime
 import editing
 import quality
 import upscaling
+import automation
 
 LOCK = threading.RLock()
 API_VERSION = '1'
 READS = {
+    'automation.evaluate':'run_id与人工labels数组(packet_id/check/expected)，统计误报、漏报和决定覆盖率，不推算未标注准确率',
+    'automation.list':'列出自动审片运行及候选/接缝/全片复查状态',
+    'automation.get':'run_id，读取运行快照、选片理由和未决问题',
+    'automation.image':'run_id/packet_id/image_id；读取指定采样帧或reference-N参考图，MCP返回图片内容',
+    'automation.packet':'run_id/packet_id，读取指纹绑定证据包',
     'assets.list':'列出素材稳定ID、路径和内容指纹；offset/limit分页',
     'shots.list':'列出镜头稳定ID、原段号、候选及内容评审状态',
     'edit.get':'读取已保存初剪草稿和修订号',
@@ -32,6 +38,12 @@ READS = {
     'timeline.get':'读取指定final的冻结快照，省略final时读取当前剪辑',
 }
 WRITES = {
+    'automation.start':'segments段号数组，expected_dialogue台词映射可选，confidence默认0.8；自动准备审片证据与初剪流程',
+    'automation.claim':'run_id/actor；认领一份待审证据，返回15分钟租约与要求',
+    'automation.submit':'run_id/packet_id/lease_token/signature/result；提交实际审查范围、逐项判断与选片评分',
+    'automation.reopen':'run_id/packet_id/note，保留旧判断并补充复查；不改写已导出候选依据',
+    'automation.resume':'run_id；明确续接中断或等待的运行，不自动重提未知导出',
+    'automation.cancel':'run_id；取消自动流程，已发出的独立质检可能继续',
     'assets.import':'source为获授权import-root内的本地绝对路径；复制入素材库并校验内容',
     'assets.relink':'asset_id/path；为已移动的相同内容重新绑定路径，旧评审不自动转移',
     'shots.create':'segment/scene/text/duration；新增镜头，保留原分段表',
@@ -152,7 +164,7 @@ def segment(db,value):
 
 
 def task_sync(app,db):
-    all_jobs=[('export',x) for x in editing.jobs(app)]+[('upscale',x) for x in upscaling.status(app)['jobs']]+[('quality',x) for x in quality.reports(app)['items']]
+    all_jobs=[('export',x) for x in editing.jobs(app)]+[('upscale',x) for x in upscaling.status(app)['jobs']]+[('quality',x) for x in quality.reports(app)['items']]+[('automation',x) for x in automation.jobs(app)]
     pid=db.execute("SELECT value FROM meta WHERE key='project_id'").fetchone()[0]
     for kind,job in all_jobs:
         status=job['status']
@@ -160,8 +172,8 @@ def task_sync(app,db):
             status='interrupted'
         status={'completed':'succeeded'}.get(status,status)
         identity=str(uuid.uuid5(uuid.UUID(pid),kind+':'+job['id']))
-        entry={'id':identity,'kind':kind,'native_id':job['id'],'status':status,'can_cancel':kind in ('export','upscale') and status in ('running','queued'),
-               'can_retry':status in ('failed','cancelled','interrupted'),'progress':job,'outputs':[job['final'] if kind=='export' else job['output']] if status=='succeeded' and kind!='quality' else [],
+        entry={'id':identity,'kind':kind,'native_id':job['id'],'status':status,'can_cancel':kind in ('export','upscale','automation') and status in ('running','queued','waiting_review','needs_decision'),
+               'can_retry':status in ('failed','cancelled','interrupted'),'progress':job,'outputs':[job['final'] if kind=='export' else job.get('output',job.get('final'))] if status=='succeeded' and kind!='quality' and (job.get('final') or job.get('output')) else [],
                'error':job.get('error',''),'content_status':'not_inferred'}
         db.execute('INSERT INTO tasks VALUES(?,?,?,?) ON CONFLICT(kind,native_id) DO UPDATE SET snapshot=excluded.snapshot',
                    (identity,kind,job['id'],json.dumps(entry,ensure_ascii=False)))
@@ -174,8 +186,8 @@ def project(app):
         tasks=task_sync(app,db)
         return {**app.api_project(),'api_version':API_VERSION,'project_id':db.execute("SELECT value FROM meta WHERE key='project_id'").fetchone()[0],
                 'revision':revision(app,db),'import_roots':[str(p) for p in getattr(app,'IMPORT_ROOTS',[])],
-                'task_counts':{s:sum(t['status']==s for t in tasks) for s in ('queued','running','succeeded','failed','cancelled','interrupted')},
-                'operations':{'read':READS,'write':WRITES},'capabilities':{'quality_cancel':False,'transport':'stdio proxy to local authenticated HTTP','automatic_generation':False}}
+                'task_counts':{s:sum(t['status']==s for t in tasks) for s in ('queued','running','waiting_review','needs_decision','succeeded','failed','cancelled','interrupted')},
+                'operations':{'read':READS,'write':WRITES},'capabilities':{'quality_cancel':False,'transport':'stdio proxy to local authenticated HTTP','automatic_generation':False,'automatic_review':{'host_bridge':True,'local_command_configured':bool(os.environ.get('STUDIO_REVIEW_COMMAND')),'asr_configured':bool(os.environ.get('STUDIO_ASR_PYTHON') and os.environ.get('STUDIO_ASR_MODEL'))}}}
 
 
 def dispatch(app,body):
@@ -207,7 +219,7 @@ def dispatch(app,body):
             db.execute("UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='sequence'")
             tasks=task_sync(app,db)
             response={'result':result,'revision':revision(app,db),'api_version':API_VERSION}
-            if op in ('export.start','upscale.start','quality.scan','tasks.retry'):
+            if op in ('export.start','upscale.start','quality.scan','automation.start','automation.resume','tasks.retry'):
                 native_ids={j['id'] for j in result.get('jobs',[result]) if isinstance(j,dict) and 'id' in j}
                 response['tasks']=[t for t in tasks if t['native_id'] in native_ids]
             db.execute("UPDATE receipts SET state='completed',result=? WHERE key=?",(json.dumps(response,ensure_ascii=False),key))
@@ -222,6 +234,14 @@ def dispatch(app,body):
 
 
 def read_operation(app,db,op,args):
+    if op=='automation.evaluate':return automation.evaluate(app,args)
+    if op=='automation.list':return {'items':automation.jobs(app)}
+    if op=='automation.get':return automation.get(app,args.get('run_id'))
+    if op=='automation.image':
+        p=automation.packet(app,args.get('run_id'),args.get('packet_id'));image=next((x for x in p['frames']+p.get('reference_images',[]) if x['id']==args.get('image_id')),None)
+        if not image:raise ValueError('证据图ID不存在')
+        return {**image,'mime_type':app.MEDIA.get(app.safe(image['path']).suffix.lower(),'image/png')}
+    if op=='automation.packet':return automation.packet(app,args.get('run_id'),args.get('packet_id'))
     if op=='assets.list':return assets(app,db,args)
     if op=='shots.list':
         rows=app.api_segments().get('rows',[])
@@ -251,6 +271,12 @@ def read_operation(app,db,op,args):
 
 
 def write_operation(app,db,op,args):
+    if op=='automation.start':return automation.start(app,args)
+    if op=='automation.claim':return automation.claim(app,args)
+    if op=='automation.submit':return automation.submit(app,args)
+    if op=='automation.reopen':return automation.reopen(app,args)
+    if op=='automation.resume':return automation.resume(app,args.get('run_id'))
+    if op=='automation.cancel':return automation.cancel(app,args.get('run_id'))
     if op=='assets.import':
         value=args.get('source')
         if not isinstance(value,str) or not pathlib.Path(value).is_absolute():raise ValueError('source须为绝对路径')
@@ -331,6 +357,8 @@ def write_operation(app,db,op,args):
     if op in ('tasks.cancel','tasks.retry'):
         task=read_operation(app,db,'tasks.get',args)
         kind,native=task['kind'],task['native_id']
+        if kind=='automation':
+            return automation.cancel(app,native) if op=='tasks.cancel' else automation.resume(app,native)
         if op=='tasks.cancel':
             if not task['can_cancel']:raise ValueError('此执行器当前不支持取消该任务')
             return editing.cancel(app,{'id':native}) if kind=='export' else upscaling.cancel(app,{'id':native})
