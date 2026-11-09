@@ -711,7 +711,8 @@ button.chip, button.check, button.opt, button.mi, button.i, button.ly, button.oi
 .tl-lane .marker { top: 20px; border: 0; padding: 0; cursor: pointer; }
 .tl-lane .marker::before { content: ""; position: absolute; inset: -8px; }
 button.clip { font: inherit; color: inherit; text-align: left; cursor: pointer; }
-.clip.narrow { padding: 0 2px; }
+.clip.narrow { padding:0; border:0; border-radius:2px; }
+.clip.narrow:focus-visible { outline-offset:-1px; }
 button.clip:not(.video) { border: 0; }
 .clip:active { cursor: pointer; }
 .clip .name { font-size: 11px; }
@@ -779,125 +780,228 @@ details.rec[open] > summary { margin-bottom: 8px; }
 .lightbox.full .img { aspect-ratio: auto; height: auto; width: auto; max-width: 92vw; max-height: 86vh; object-fit: contain; padding: 0; background: transparent; }
 .lightbox .cap { max-width: 80vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast { pointer-events: none; }
-/* 镜头评审沿用现有控件；对照窗口留足两幅画面的宽度。 */
-.generation-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-block:12px; }
-.generation-fields label { display:grid; gap:5px; align-content:start; }
-.generation-fields textarea { width:100%; }
-.review-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
-.review-box { margin-top:16px; padding:12px; background:var(--island-2); border-radius:12px; }
-.review-box .select, .review-box .textarea { margin-top:8px; }
-.review-dialog { width:min(1080px,95vw); max-height:92vh; overflow:auto; border:1px solid var(--line-2); border-radius:18px; padding:24px; background:var(--island); color:var(--text); }
-.review-dialog::backdrop { background:rgba(0,0,0,.7); }
-.review-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:16px; }
-.review-pair video { width:100%; aspect-ratio:16/9; background:#000; object-fit:contain; }
-@media(max-width:720px) { .review-pair { grid-template-columns:1fr; } }
-/* v0.4 · 浅色浮岛：统一信息层级与操作密度。 */
-:root { --surface-shadow:0 8px 28px rgba(17,24,39,.055); --fs-title:24px; --lh-title:32px; --content-pad:40px; }
-:root[data-theme="light"] { --bg:#f2f4f8; --island:#fff; --island-2:#f6f7fb; --island-3:#eaf0f9; --line:#e1e6ef; --line-2:#ced6e3; --text:#202939; --t2:#546278; --t3:#69768a; --acc:#5265d9; --acc-soft:rgba(82,101,217,.09); }
-body { -webkit-font-smoothing:antialiased; }
-.island { box-shadow:var(--surface-shadow); border:1px solid var(--line); }
-.nav { border-radius:22px; }
-.nav .brand b { letter-spacing:-.06em; font-size:17px; }
-.nav .brand span { letter-spacing:.08em; font-size:9px; text-transform:uppercase; }
-.nav .i { height:42px; transition:background .18s,color .18s; }
-.nav .i[aria-current] { background:var(--acc-soft); color:var(--acc); box-shadow:inset 3px 0 var(--acc); }
-.content { padding-top:28px; }
-.head { align-items:center; flex-wrap:wrap; gap:18px; margin-bottom:28px; }
-.head .title-row { gap:14px; }
-.title { letter-spacing:-.035em; font-weight:650; }
-.head .sub { padding:4px 9px; background:var(--island); border:1px solid var(--line); border-radius:8px; font-size:11px; font-variant-numeric:tabular-nums; }
-.head .actions { flex-wrap:wrap; }
-.pill, .select { min-height:32px; border-radius:10px; }
-.pill.sm { min-height:29px; padding-inline:12px; }
-.pill:hover:not(:disabled) { border-color:var(--acc); background:var(--acc-soft); }
-.pill.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
-.pill.primary:hover:not(:disabled) { background:var(--acc); color:#fff; filter:brightness(1.08); }
-.seg { padding:3px; background:var(--island-3); border-radius:11px; }
-.seg button { border-radius:8px; min-height:28px; }
-.search { height:36px; border-radius:11px; background:var(--island); border-color:var(--line-2); transition:border-color .18s,box-shadow .18s; }
-.search:focus-within { box-shadow:0 0 0 3px var(--acc-soft); }
-:where(button,input,select,textarea,summary):focus-visible { outline:2px solid var(--acc); outline-offset:3px; }
-.aux .aux-scroll { padding:28px 24px; }
-.aux-h b { font-size:15px; letter-spacing:-.02em; }
-.lib-aux video, .lib-aux img { border-radius:13px; }
-#libBody .section { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr)); gap:16px; }
-#libBody .section-h { grid-column:1/-1; margin-bottom:2px; font-size:17px; letter-spacing:-.02em; }
-#libBody .section-h .n { padding:2px 7px; border-radius:6px; background:var(--island-3); }
-#libBody .lib-group { padding:14px; margin:0; align-self:start; min-width:0; background:var(--island); border:1px solid var(--line); border-radius:16px; box-shadow:var(--surface-shadow); }
-#libBody .lib-group .gh { height:20px; margin-bottom:12px; font-size:13px; }
-#libBody .grid.lib { grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; }
-#libBody .pic { width:100%; border-radius:10px; overflow:hidden; outline:2px solid transparent; outline-offset:2px; transition:outline-color .18s,transform .18s; }
-#libBody .pic:hover { transform:translateY(-2px); }
-#libBody .pic[aria-selected="true"] { outline-color:var(--acc); }
-#libBody .pic img,#libBody .pic video { width:100%; object-fit:cover; aspect-ratio:16/10; }
-#libBody .pic .cap { font-size:10px; background:linear-gradient(transparent,rgba(10,18,30,.8)); padding:18px 8px 8px; }
-.table-wrap { background:var(--island); border:1px solid var(--line); border-radius:15px; padding:14px; box-shadow:var(--surface-shadow); }
-.table th { padding-block:12px; letter-spacing:.03em; }
-.table td { padding-block:15px; }
-.badge { border-radius:6px; padding:3px 7px; font-size:11px; }
-.watch-preview { border:1px solid var(--line-2); box-shadow:0 12px 38px rgba(10,18,32,.12); }
-.tlb { margin-top:18px; padding:12px; border:1px solid var(--line); background:var(--island); border-radius:15px; }
-.review-dialog { padding:28px; border-radius:22px; box-shadow:0 28px 100px rgba(20,30,50,.25); }
-.review-dialog::backdrop { background:rgba(25,35,55,.4); backdrop-filter:blur(5px); }
-.review-dialog > .review-actions:first-child { margin:0 0 18px; justify-content:space-between; align-items:center; }
-.review-dialog > .review-actions:first-child b { font-size:20px; letter-spacing:-.03em; }
-.review-dialog :is(input:not([type=checkbox]):not([type=range]),select) { background:var(--island-2); border:1px solid var(--line-2); border-radius:8px; padding:6px 9px; color:var(--text); font:inherit; }
-.review-actions { gap:8px; margin-block:12px; }
-.review-box { border:1px solid var(--line); padding:16px; background:var(--island-2); }
-.upscale-sources { max-height:200px; overflow:auto; margin-block:12px; border:1px solid var(--line); border-radius:12px; padding:6px; }
-.upscale-source { display:flex; gap:10px; padding:8px; align-items:center; font-size:12px; overflow-wrap:anywhere; }
-.upscale-source:hover { background:var(--acc-soft); border-radius:7px; }
-.upscale-source input { accent-color:var(--acc); }
-.task-card { padding:18px; border:1px solid var(--line); background:var(--island-2); border-radius:14px; margin-block:12px; }
-.task-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; overflow-wrap:anywhere; }
-.task-card progress { width:100%; height:6px; border:0; border-radius:8px; accent-color:var(--acc); }
-.task-card p { margin-block:10px; }
-.task-card .err { white-space:pre-wrap; overflow-wrap:anywhere; }
-.compare-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
-.compare-grid video { border-radius:12px; }
-.upscale-dialog details summary { cursor:pointer; font-size:13px; font-weight:600; padding-block:10px; }
-.empty { border:1px dashed var(--line-2); border-radius:18px; background:var(--island-2); padding:32px 20px; }
-@media(max-width:960px) { .head .actions { flex:1 1 100%; } .head .search { flex:1; min-width:130px; } }
-@media(max-width:720px) { .content { padding-top:20px; } .review-dialog { padding:18px; } .compare-grid { grid-template-columns:1fr; } .task-heading { align-items:flex-start; flex-direction:column; } .head .title { font-size:22px; } #libBody .section { grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr)); } }
-@media(prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
+/* 工作区与工作台共用的视觉样式 */
+:root {
+  --bg:#17191f; --island:#20232a; --island-2:#282c35; --island-3:#303642;
+  --line:#353b47; --line-2:#48505e; --text:#f0f2f6; --t2:#bcc4d1; --t3:#9ba7b9;
+  --acc:#83b5ff; --acc-soft:rgba(116,170,255,.16); --primary:#0864d6;
+  --surface-shadow:0 1px 2px rgba(0,0,0,.15),0 10px 26px rgba(0,0,0,.14);
+  --fs-title:clamp(24px,2.5vw,34px); --lh-title:1.16;
+  --r-island:22px; --r-panel:16px; --content-pad:clamp(18px,3vw,40px);
+  --chevron:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='none' stroke='%239ba7b9' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='m4 6 4 4 4-4'/></svg>");
+}
+:root[data-theme="light"] {
+  --bg:#f2f4f8; --island:#fff; --island-2:#f6f8fb; --island-3:#eaf0f7;
+  --line:#e0e6ef; --line-2:#cbd4e2; --text:#182234; --t2:#45546b; --t3:#5b6980;
+  --acc:#075dbb; --acc-soft:rgba(8,100,214,.1);
+  --surface-shadow:0 1px 2px rgba(22,34,53,.035),0 10px 26px rgba(22,34,53,.055);
+  --chevron:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='none' stroke='%235b6980' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='m4 6 4 4 4-4'/></svg>");
+}
+.island { border:1px solid var(--line); box-shadow:var(--surface-shadow); }
+.nav { padding-block:14px 10px; gap:4px; }
+.nav .brand { flex-direction:row; align-items:center; gap:10px; margin:3px 0 12px; align-self:center; }
+.nav .brand .brand-mark { display:grid; place-items:center; flex:none; width:34px; height:34px; border-radius:10px; color:white; background:linear-gradient(150deg,#4f9bff,#095acb); box-shadow:0 2px 5px rgba(12,86,181,.23); }
+.brand-mark svg { width:20px; height:20px; }
+.nav .brand-name { display:none; margin:0; color:var(--text); letter-spacing:-.035em; font-size:15px; font-weight:680; white-space:nowrap; }
+.nav .nav-label { display:none; margin:10px 0 2px; padding-inline:10px; color:var(--t3); font-size:11px; font-weight:600; }
+.nav .nav-tools { display:flex; flex-direction:column; align-items:inherit; gap:4px; align-self:stretch; }
+.nav .i { height:37px; flex:none; }
+.nav .i:hover { background:var(--island-2); }
+.nav .i[aria-current], .nav .i[aria-expanded="true"] { background:var(--acc-soft); color:var(--acc); }
+.nav :is(#navMore,#mobileTheme) { display:none; }
+@media (min-width:721px) {
+  .nav { overflow-y:auto; overflow-x:hidden; height:calc(100dvh - 2 * var(--gap)); }
+  .shell.nav-open .nav .brand { align-self:stretch; margin:3px 4px 12px; }
+  .shell.nav-open .nav :is(.brand-name,.nav-label) { display:block; }
+}
 
-/* 素材库：筛选同高同边框，镜头卡片共用固定比例的预览区。 */
-#v-library .head .actions { align-items:center; }
-#v-library .head .actions :is(.pill,.select) { height:32px; min-height:32px; box-sizing:border-box; }
-#libCats { height:32px; padding:2px; gap:2px; border:1px solid var(--line-2); background:var(--island); border-radius:10px; flex-wrap:nowrap; max-width:100%; overflow-x:auto; box-sizing:border-box; }
-#libCats > button { height:26px; min-height:26px; padding:0 12px; border:0; border-radius:7px; background:transparent; flex-shrink:0; }
-#libCats > button:hover { background:var(--island-2); }
-#libCats > button:focus-visible { outline-offset:-2px; }
+.content { padding-top:22px; }
+.head { align-items:flex-end; gap:14px 24px; margin-bottom:24px; }
+.head .title-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; max-width:100%; }
+.head .title { color:var(--text); font-weight:680; letter-spacing:-.035em; white-space:normal; overflow-wrap:anywhere; }
+.workspace-label { flex-basis:100%; font-size:11px; line-height:16px; font-weight:650; letter-spacing:.11em; color:var(--acc); }
+.head .sub { min-width:0; padding:2px 8px; border:1px solid var(--line); border-radius:7px; background:var(--island); font-size:11px; overflow-wrap:anywhere; }
+.head .actions { align-items:center; min-width:0; max-width:100%; }
+.pill, .select { min-height:34px; border-radius:9px; }
+.pill { background:var(--island); }
+.pill.sm { min-height:30px; padding-inline:11px; }
+.pill:hover:not(:disabled) { border-color:var(--acc); background:var(--acc-soft); }
+.pill.primary { background:var(--primary); color:white; border-color:var(--primary); }
+.pill.primary:hover:not(:disabled) { background:var(--primary); color:white; filter:brightness(1.08); }
+.pill.on:hover:not(:disabled) { background:var(--ink); color:var(--ink-fg); }
+.seg { height:auto; min-width:0; max-width:100%; align-items:center; overflow-x:auto; padding:3px; border:1px solid var(--line); border-radius:10px; background:var(--island-3); scrollbar-width:none; }
+.seg > button { flex:none; height:28px; min-height:28px; border-radius:7px; white-space:nowrap; }
+.seg > button:focus-visible { outline-offset:-2px; }
+.search { height:34px; border-radius:9px; background:var(--island); border-color:var(--line-2); }
+.search:focus-within { box-shadow:0 0 0 3px var(--acc-soft); }
+.aux .aux-scroll { padding:22px clamp(15px,2vw,23px); }
+.shell.narrow .aux.drawer.is-open { display:flex; }
+.aux-h b { font-size:15px; letter-spacing:-.02em; }
+.lib-aux video, .lib-aux img { border-radius:12px; }
+
+#libBody .section { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr)); gap:14px; margin-top:26px; }
+#libBody .section-h { grid-column:1/-1; margin-bottom:2px; font-size:17px; letter-spacing:-.015em; }
+#libBody .section-h .n { padding:2px 7px; border-radius:6px; background:var(--island-3); }
+#libBody .lib-group { padding:12px; margin:0; align-self:start; min-width:0; background:var(--island); border:1px solid var(--line); border-radius:var(--r-panel); box-shadow:var(--surface-shadow); }
+#libBody .lib-group .gh { min-height:20px; margin-bottom:10px; font-size:13px; }
+#libBody .grid.lib { grid-template-columns:repeat(auto-fit,minmax(min(100%,110px),1fr)); gap:8px; }
+#libBody .pic { width:100%; border-radius:9px; overflow:hidden; outline:2px solid transparent; outline-offset:2px; transition:outline-color .18s,transform .18s; }
+#libBody .pic:hover { transform:translateY(-1px); }
+#libBody .pic:is([aria-selected="true"],:focus-visible) { outline-color:var(--acc); }
+#libBody .pic :is(img,video) { width:100%; object-fit:cover; aspect-ratio:16/10; }
+#libBody .pic .cap { font-size:11px; background:linear-gradient(transparent,rgba(10,18,30,.85)); padding:16px 8px 7px; }
+#v-library .head .actions :is(.pill,.select) { height:34px; min-height:34px; }
+#libCats { min-height:34px; padding:2px; flex-wrap:nowrap; }
+#libCats > button { padding-inline:11px; }
 #libCats > button[aria-pressed="true"] { background:var(--acc-soft); color:var(--acc); box-shadow:none; }
 #libBody .grid.lib.shot-previews { aspect-ratio:16/9; grid-template-columns:repeat(var(--preview-cols),minmax(0,1fr)); grid-template-rows:repeat(var(--preview-rows),minmax(0,1fr)); align-items:center; }
 #libBody .shot-previews .pic { aspect-ratio:16/9; min-width:0; min-height:0; max-height:100%; }
 #libBody .shot-previews .pic :is(img,video) { aspect-ratio:auto; height:100%; }
-.app-version { position:fixed; bottom:18px; right:24px; z-index:4; padding:4px 8px; border:1px solid var(--line); border-radius:7px; color:var(--t3); background:var(--island); font:10px/16px var(--mono); pointer-events:none; }
-.quality-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
-.quality-grid label,.quality-form label { display:flex; gap:8px; align-items:center; margin-block:8px; }
-.quality-form textarea { width:100%; min-height:80px; }
-.reference-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; }
-.reference-card { padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--island-2); }
-.reference-card img { width:100%; height:100px; object-fit:contain; }
-.quality-section { margin-top:24px; border-top:1px solid var(--line); padding-top:18px; }
-.quality-section h3 { font-size:15px; margin-bottom:12px; }
-@media(max-width:720px) { .nav .i { min-width: 0; flex: 1; } .nav .i .l { white-space: nowrap; } .app-version { bottom:76px; right:12px; } .quality-grid { grid-template-columns:1fr; } }
+
+.table-wrap, .tlb { background:var(--island); border:1px solid var(--line); border-radius:var(--r-panel); box-shadow:var(--surface-shadow); }
+.table-wrap { padding:4px 12px; }
+.table-wrap .table { min-width:740px; }
+.table th { padding-block:13px; font-weight:650; }
+.table td { padding-block:13px; }
+.table tbody tr:hover:not([aria-selected="true"]) td { background:var(--island-2); }
+.badge { border-radius:6px; padding:3px 7px; font-size:11px; }
+.verbar, .tl-controls { padding:8px 10px; border:1px solid var(--line); border-radius:12px; background:var(--island); }
+.verbar > *, .tl-controls > *, .cmprow > * { min-width:0; max-width:100%; }
+.verbar select, .cmprow select { max-width:100%; text-overflow:ellipsis; }
+.tl-controls .play { width:34px; height:34px; background:var(--primary); color:white; flex:none; }
+.tl-controls .icon-btn { flex:none; }
+.play-group, .play-meta, .play-actions { display:flex; align-items:center; flex-wrap:wrap; gap:7px; }
+.play-meta { flex:1 1 220px; }
+.play-actions { margin-inline-start:auto; }
+.watch-preview { border:1px solid var(--line-2); box-shadow:0 10px 26px rgba(11,22,40,.15); }
+.tlb { margin-top:14px; padding:10px; }
+.empty { border:1px solid var(--line); border-radius:var(--r-panel); background:var(--island); padding:30px 22px; }
+.app-version { display:table; margin:24px 0 0 auto; color:var(--t3); font:11px/18px var(--mono); }
+
+.review-dialog {
+  --dialog-pad:clamp(15px,3vw,28px);
+  width:min(1000px,calc(100vw - 32px)); max-height:calc(100dvh - 36px);
+  overflow:auto; overscroll-behavior:contain; scroll-padding-top:84px;
+  border:1px solid var(--line-2); border-radius:22px; padding:0 var(--dialog-pad) var(--dialog-pad);
+  background:var(--island); color:var(--text); box-shadow:0 22px 90px rgba(11,23,44,.28);
+  overflow-wrap:anywhere;
+}
+.review-dialog::backdrop { background:rgba(17,27,46,.42); backdrop-filter:blur(5px); }
+.review-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-block:12px; }
+.review-dialog > .review-actions:first-child {
+  position:sticky; top:0; z-index:2; justify-content:flex-end;
+  padding:16px var(--dialog-pad); margin:0 calc(-1 * var(--dialog-pad)) 16px;
+  background:var(--island); border-bottom:1px solid var(--line);
+}
+.review-dialog > .review-actions:first-child > b { flex:1 1 170px; font-size:21px; line-height:1.2; letter-spacing:-.035em; }
+.review-dialog :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) {
+  min-width:0; max-width:100%; min-height:38px; padding:7px 10px; border:1px solid var(--line-2);
+  border-radius:9px; background-color:var(--island); color:var(--text); font:400 13px/1.4 var(--font);
+}
+.review-dialog select {
+  appearance:none; width:auto; padding-right:30px; cursor:pointer; text-overflow:ellipsis; white-space:nowrap;
+  background-image:var(--chevron); background-repeat:no-repeat; background-position:right 10px center;
+}
+.review-dialog textarea { display:block; width:100%; min-height:74px; resize:vertical; }
+.review-dialog > select { display:block; margin-block:12px; }
+.review-dialog .review-note { display:block; width:100%; margin-block:8px; }
+.editor-clip { display:flex; flex-wrap:wrap; align-items:end; gap:8px 12px; padding:12px 0; border-bottom:1px solid var(--line); }
+.editor-clip label { display:grid; gap:5px; min-width:0; }
+.editor-clip .editor-source { flex:1 1 210px; }
+.editor-clip .editor-source select { width:100%; }
+.review-dialog :is(input,textarea)::placeholder { color:var(--t3); }
+.review-dialog :is(input:not([type=checkbox]):not([type=range]),select,textarea):focus { outline:2px solid var(--acc); outline-offset:-2px; box-shadow:none; }
+.review-dialog :is(input,select,textarea):disabled { opacity:.62; cursor:default; }
+.review-dialog input:is([type=checkbox],[type=radio]) { flex:none; margin:0; accent-color:var(--primary); }
+.review-dialog label:has(> input[type=checkbox]) { display:flex; gap:9px; align-items:center; }
+.review-dialog :is(img,video,audio) { max-width:100%; }
+.review-dialog video { border-radius:12px; }
+.review-dialog details { margin-block:9px; }
+.review-dialog summary { cursor:pointer; padding-block:4px; color:var(--t2); font-weight:600; }
+.review-box, .task-card, .quality-section, .form-grid.surface {
+  min-width:0; margin-block:12px; padding:16px; border:1px solid var(--line); border-radius:var(--r-panel); background:var(--island-2);
+}
+.review-box .select, .review-box .textarea { margin-top:8px; }
+.form-grid {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));
+  align-items:start; gap:12px 14px; margin-block:12px;
+}
+.form-grid > label { display:grid; gap:5px; min-width:0; color:var(--t2); font-size:13px; font-weight:550; }
+.form-grid > label > :is(select,input:not([type=checkbox]),textarea) { width:100%; }
+.form-grid .full-field { grid-column:1/-1; }
+.form-grid > label:has(> input[type=checkbox]) { align-self:end; min-height:38px; }
+.quality-section h3 { font-size:16px; font-weight:650; letter-spacing:-.015em; margin-bottom:7px; }
+.quality-section .reference-list:empty { display:none; }
+.quality-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.reference-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,155px),1fr)); gap:12px; margin-block:10px; }
+.reference-card { min-width:0; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--island); }
+.reference-card img { width:100%; height:100px; object-fit:contain; border-radius:8px; }
+.upscale-sources { max-height:200px; overflow:auto; margin-block:12px; border:1px solid var(--line); border-radius:12px; padding:6px; }
+.upscale-source { display:flex; gap:10px; padding:8px; align-items:center; font-size:13px; overflow-wrap:anywhere; }
+.upscale-source:hover { background:var(--acc-soft); border-radius:7px; }
+.task-heading { display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; }
+.task-card progress { width:100%; height:6px; border:0; border-radius:8px; accent-color:var(--primary); }
+.task-card p { margin-block:8px; }
+.task-card .err { white-space:pre-wrap; }
+.review-pair, .compare-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:12px; }
+.review-pair video { width:100%; aspect-ratio:16/9; background:#000; object-fit:contain; }
+
+@media (max-width:960px) {
+  .head .actions { flex:1 1 100%; }
+  .head .search { flex:1 1 160px; }
+}
+@media (max-width:720px) {
+  .content { padding:17px 12px 22px; }
+  .head { align-items:flex-start; gap:12px; }
+  .nav { gap:4px; padding:5px 6px calc(5px + env(safe-area-inset-bottom)); border-radius:15px 15px 0 0; }
+  .nav .i { flex:1 1 0; min-width:0; height:48px; padding:3px; text-align:center; }
+  .nav #navMore { display:flex; }
+  .nav .nav-tools {
+    display:none; position:absolute; inset:auto 8px calc(100% + 8px);
+    max-height:min(65dvh,370px); overflow:auto; padding:8px; background:var(--island);
+    border:1px solid var(--line); border-radius:15px; box-shadow:var(--shadow-pop);
+    grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px;
+  }
+  .nav .nav-tools.is-open { display:grid; }
+  .nav .nav-tools .i { width:100%; height:44px; padding-inline:9px; flex-direction:row; justify-content:flex-start; gap:8px; text-align:left; }
+  .nav .nav-tools .l { font-size:12px; overflow-wrap:anywhere; }
+  .nav :is(.brand,#theme) { display:none; }
+  .nav .nav-tools #mobileTheme { display:flex; }
+  .review-dialog { width:calc(100vw - 16px); max-height:calc(100dvh - 22px); border-radius:17px; }
+  .review-dialog > .review-actions:first-child { padding-block:12px; }
+  .review-dialog > .review-actions:first-child > b { font-size:18px; flex-basis:125px; }
+  .review-pair, .compare-grid { grid-template-columns:minmax(0,1fr); }
+  .table-wrap { padding-inline:8px; }
+  .play-meta { flex-basis:150px; }
+  .play-actions { margin-inline-start:0; }
+  #fileSlot { flex:1 1 220px; }
+  #fileSlot select { width:100%; }
+}
+@media (max-width:480px) {
+  .quality-fields { grid-template-columns:minmax(0,1fr); }
+  .review-box, .task-card, .quality-section, .form-grid.surface { padding:12px; }
+}
 </style>
 </head>
 <body>
-<div class="app-version" id="appVersion" aria-label="Lazy Studio程序版本">Lazy Studio</div>
 <div class="shell" id="shell">
   <nav class="island nav" aria-label="视图">
-    <div class="brand" title="Lazy Studio · 放映室"><b>Lazy</b><span>Studio</span></div>
+    <div class="brand" title="Lazy Studio · 放映室"><span class="brand-mark" aria-hidden="true"></span><b class="brand-name">Lazy Studio</b></div>
+    <div class="nav-label">工作区</div>
     <button class="i" type="button" data-view="watch" aria-current="page" title="看片"><span class="ic"></span><span class="l">看片</span></button>
     <button class="i" type="button" data-view="progress" title="进度"><span class="ic"></span><span class="l">进度</span></button>
     <button class="i" type="button" data-view="library" title="素材库"><span class="ic"></span><span class="l">素材库</span></button>
-    <button class="i" type="button" id="qualityBtn" title="连戏与质检"><span class="ic"></span><span class="l">质检</span></button>
-    <button class="i" type="button" id="automationBtn" title="镜头与候选"><span class="ic"></span><span class="l">镜头与候选</span></button>
-    <button class="i" type="button" id="generationBtn" title="模型生成与单镜返修"><span class="ic"></span><span class="l">单镜返修</span></button>
-    <button class="i" type="button" id="finishingBtn" title="剪映精修"><span class="ic"></span><span class="l">剪映精修</span></button>
-    <button class="i" type="button" id="episodeBtn" title="整集制作"><span class="ic"></span><span class="l">整集制作</span></button>
-    <button class="i" type="button" id="tasksBtn" title="统一任务"><span class="ic"></span><span class="l">任务</span></button>
+    <div class="nav-label">制作工具</div>
+    <button class="i" type="button" id="navMore" title="更多制作工具" aria-expanded="false" aria-controls="navTools"><span class="ic"></span><span class="l">更多</span></button>
+    <div class="nav-tools" id="navTools">
+      <button class="i" type="button" id="qualityBtn" title="连戏与质检"><span class="ic"></span><span class="l">质检</span></button>
+      <button class="i" type="button" id="automationBtn" title="镜头与候选"><span class="ic"></span><span class="l">镜头与候选</span></button>
+      <button class="i" type="button" id="generationBtn" title="模型生成与单镜返修"><span class="ic"></span><span class="l">单镜返修</span></button>
+      <button class="i" type="button" id="finishingBtn" title="剪映精修"><span class="ic"></span><span class="l">剪映精修</span></button>
+      <button class="i" type="button" id="episodeBtn" title="整集制作"><span class="ic"></span><span class="l">整集制作</span></button>
+      <button class="i" type="button" id="tasksBtn" title="统一任务"><span class="ic"></span><span class="l">任务</span></button>
+      <button class="i" type="button" id="mobileTheme" title="切换深浅色"><span class="ic"></span><span class="l">深浅外观</span></button>
+    </div>
     <span class="sp"></span>
     <button class="i drawerbtn" type="button" id="drawerBtn" title="打开面板" aria-pressed="false"><span class="ic"></span><span class="l">面板</span></button>
     <button class="i navtoggle" type="button" id="navToggle" title="展开导航"><span class="ic"></span><span class="l">收起</span></button>
@@ -907,6 +1011,7 @@ body { -webkit-font-smoothing:antialiased; }
     <section class="view" id="v-watch"></section>
     <section class="view" id="v-progress" hidden></section>
     <section class="view" id="v-library" hidden></section>
+    <div class="app-version" id="appVersion" aria-label="Lazy Studio程序版本">Lazy Studio</div>
   </main>
   <aside class="island aux" id="aux">
     <div class="grip-x" id="auxGrip" role="separator" aria-orientation="vertical" aria-label="拖动改侧栏宽度，双击还原，左右键微调" tabindex="0"></div>
@@ -945,6 +1050,11 @@ const ICON = {
   film: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/>'),
   table: svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
   grid: svg('<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>'),
+  more: svg('<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'),
+  shield: svg('<path d="M12 3 4.5 6v5c0 5 3 8 7.5 10 4.5-2 7.5-5 7.5-10V6zM9 12l2 2 4-4"/>'),
+  layers: svg('<path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/>'),
+  spark: svg('<path d="M12 3c0 5-3 8-8 8 5 0 8 3 8 8 0-5 3-8 8-8-5 0-8-3-8-8zM19 16v5m-2.5-2.5h5"/>'),
+  checklist: svg('<path d="m3 6 2 2 3-4M11 6h10M3 12h4m4 0h10M3 18h4m4 0h10"/>'),
   panel: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
   moon: svg('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>'),
@@ -963,7 +1073,29 @@ const ICON = {
   expand: svg('<path d="m6 6 6 6-6 6M13 6l6 6-6 6"/>'), collapse: svg('<path d="m18 6-6 6 6 6M11 6l-6 6 6 6"/>'),
   pen: svg('<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="m12.5 7.5 4 4"/>'), minus: svg('<path d="M5 12h14"/>'), plus: svg('<path d="M12 5v14M5 12h14"/>'), refresh: svg('<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'),
 };
-$$('.nav .i').forEach(b => { const v = b.dataset.view; b.querySelector('.ic').innerHTML = ICON[{ watch: 'film', progress: 'table', library: 'grid' }[v] || { drawerBtn: 'panel', navToggle: 'expand', theme: 'moon', qualityBtn: 'table', tasksBtn: 'table', generationBtn: 'film', finishingBtn: 'pen', episodeBtn: 'film', automationBtn: 'film' }[b.id]]; });
+const navIcons = {watch:'film',progress:'table',library:'grid',drawerBtn:'panel',navToggle:'expand',theme:'moon',
+  mobileTheme:'moon',navMore:'more',qualityBtn:'shield',tasksBtn:'checklist',generationBtn:'spark',finishingBtn:'pen',
+  episodeBtn:'film',automationBtn:'layers'};
+$('.brand-mark').innerHTML = ICON.play;
+$$('.nav .i').forEach(button => { button.querySelector('.ic').innerHTML = ICON[navIcons[button.dataset.view || button.id]]; });
+const mobileNav = matchMedia('(max-width:720px)');
+const navMore = $('#navMore'), navTools = $('#navTools');
+function setMore(open) {
+  navTools.classList.toggle('is-open',open);
+  navMore.setAttribute('aria-expanded',String(open));
+}
+navMore.addEventListener('click',()=>setMore(navMore.getAttribute('aria-expanded')!=='true'));
+navTools.addEventListener('click',event=>{ if (mobileNav.matches && event.target.closest('button')) setMore(false); });
+document.addEventListener('pointerdown',event=>{
+  if (!navTools.contains(event.target) && !navMore.contains(event.target)) setMore(false);
+});
+navMore.closest('nav').addEventListener('keydown',event=>{
+  if (event.key==='Escape' && navMore.getAttribute('aria-expanded')==='true') {
+    setMore(false);
+    navMore.focus();
+  }
+});
+mobileNav.addEventListener('change',()=>setMore(false));
 
 const S = { view: 'watch', proj: null, finals: { videos: [], docs: [] }, cur: null, cmp: { mode: 'off', alt: null, offset: 0, audio: 'cur', blinkOn: false }, markers: [], draft: null,
   auxTab: 'marks', fbPath: '反馈/待处理.md', editing: null, segs: null, selSeg: null, lib: null, selLib: null, libCat: '全部', doc: null, docPath: null, lb: null };
@@ -981,7 +1113,7 @@ const cmpOn = () => S.cmp.mode === 'split' && !!S.cmp.alt;
 
 /* ---------- 壳：视图切换、导航展开收起、侧栏宽度与抽屉、深浅。宽窄按真实像素算：内容区最窄 480，不够就把侧栏收成抽屉 */
 const shell = $('#shell');
-const UI = { navOpen: false, auxW: 360, auxOpen: true };
+const UI = { navOpen: true, auxW: 360, auxOpen: true };
 try { Object.assign(UI, JSON.parse(localStorage.getItem('studio:ui') || '{}')); } catch (e) {}
 function saveUI() { try { localStorage.setItem('studio:ui', JSON.stringify(UI)); } catch (e) {} }
 const navW = () => UI.navOpen ? 168 : 60;
@@ -1045,9 +1177,9 @@ $('#navToggle').addEventListener('click', () => { UI.navOpen = !UI.navOpen; save
   grip.addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); UI.auxW = Math.max(300, Math.min(auxMax(), UI.auxW + (e.key === 'ArrowLeft' ? 16 : -16))); saveUI(); applyUI(); } });
 })();
 const root = document.documentElement;
-function themeIcon() { const dark = root.dataset.theme ? root.dataset.theme === 'dark' : !matchMedia('(prefers-color-scheme: light)').matches; $('#theme .ic').innerHTML = dark ? ICON.sun : ICON.moon; }
+function themeIcon() { const dark = root.dataset.theme === 'dark'; $$('#theme .ic,#mobileTheme .ic').forEach(icon=>{icon.innerHTML=dark ? ICON.sun : ICON.moon;}); }
 try { const t = localStorage.getItem('studio:theme'); if (t) root.dataset.theme = t; } catch (e) {}
-$('#theme').addEventListener('click', () => { const dark = root.dataset.theme ? root.dataset.theme === 'dark' : !matchMedia('(prefers-color-scheme: light)').matches; root.dataset.theme = dark ? 'light' : 'dark'; try { localStorage.setItem('studio:theme', root.dataset.theme); } catch (e) {} themeIcon(); });
+$$('#theme,#mobileTheme').forEach(button=>button.addEventListener('click', () => { const dark = root.dataset.theme ? root.dataset.theme === 'dark' : !matchMedia('(prefers-color-scheme: light)').matches; root.dataset.theme = dark ? 'light' : 'dark'; try { localStorage.setItem('studio:theme', root.dataset.theme); } catch (e) {} themeIcon(); }));
 themeIcon(); applyUI();
 
 /* ---------- 看片：版本栏（一版一个按钮；对照收进一个菜单）、播放器、播放行、标记条 */
@@ -1064,30 +1196,31 @@ function renderWatch() {
   const v = $('#v-watch'); v.innerHTML = '';
   const vids = S.finals.videos;
   if (!vids.length) {
-    v.append(h('div', { class: 'head' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, S.proj.name), h('span', { class: 'sub' }, 'final/'))));
+    v.append(h('div', { class: 'head' }, h('div', { class: 'title-row' }, h('span',{class:'workspace-label'},'放映室'), h('h1', { class: 'title' }, S.proj.name), h('span', { class: 'sub' }, 'final/'))));
     v.append(h('div', { class: 'empty' }, h('div', { class: 'h' }, 'final/ 里还没有成片'), h('p', {}, '剪辑总装出成片后，这里就能看、能逐帧、能打反馈。')));
     v.append(h('button', { class: 'pill', onclick: openEditor }, '建立初剪'));
     return;
   }
   S.groups = groupVersions(vids);
-  v.append(h('div', { class: 'head', style: 'margin-bottom:16px' }, h('div', { class: 'title-row' }, h('h1', { class: 'title', id: 'filmTitle' }, short(S.groups[0].main.name)), h('span', { class: 'sub' }, `final/ · ${S.groups.length} 个版本`))));
-  v.append(h('div', { class: 'verbar', id: 'verbar' }, h('span', { class: 'xs t3' }, '看'), verChips(), h('span', { id: 'fileSlot' }), h('span', { class: 'sp' }), h('span', { id: 'cmpSlot', class: 'cmpslot' })));
+  v.append(h('div', { class: 'head', style: 'margin-bottom:16px' }, h('div', { class: 'title-row' }, h('span',{class:'workspace-label'},'放映室'), h('h1', { class: 'title', id: 'filmTitle' }, short(S.groups[0].main.name)), h('span', { class: 'sub' }, `final/ · ${S.groups.length} 个版本`))));
+  v.append(h('div', { class: 'verbar', id: 'verbar' }, h('span', { class: 'xs t3' }, '版本'), verChips(), h('span', { id: 'fileSlot' }), h('span', { class: 'sp' }), h('span', { id: 'cmpSlot', class: 'cmpslot' })));
   v.append(h('div', { class: 'cmprow', id: 'cmpRow', hidden: true }));
   v.append(h('div', { class: 'watch-preview', id: 'preview' },
     h('div', { class: 'pane', id: 'paneA' }, h('video', { id: 'video', playsinline: true, preload: 'metadata' }), h('span', { class: 'ver', id: 'verTag' }), h('span', { class: 'tc', id: 'tcOver' }, '0:00.0'), h('div', { class: 'flash', id: 'flash' })),
     h('div', { class: 'pane', id: 'paneB', hidden: true }, h('video', { id: 'video2', playsinline: true, preload: 'metadata', muted: true }), h('span', { class: 'ver', id: 'verTag2' }), h('span', { class: 'tc', id: 'tcOver2' }, '0:00.0'))));
   v.append(h('div', { class: 'tl-controls', style: 'margin-top:12px' },
+    h('div', { class: 'play-group' },
     h('button', { class: 'icon-btn', type: 'button', title: '上一帧 ←', 'aria-label': '上一帧', onclick: () => step(-1), html: ICON.prev }),
     h('button', { class: 'play', id: 'playBtn', type: 'button', title: '播放 / 暂停  空格', 'aria-label': '播放', onclick: togglePlay, html: ICON.play }),
-    h('button', { class: 'icon-btn', type: 'button', title: '下一帧 →', 'aria-label': '下一帧', onclick: () => step(1), html: ICON.next }),
-    h('span', { class: 'tc' }, h('b', { id: 'tcNow' }, '0:00.0'), ' / ', h('span', { id: 'tcDur' }, '0:00.0')),
+    h('button', { class: 'icon-btn', type: 'button', title: '下一帧 →', 'aria-label': '下一帧', onclick: () => step(1), html: ICON.next })),
+    h('div', { class: 'play-meta' }, h('span', { class: 'tc' }, h('b', { id: 'tcNow' }, '0:00.0'), ' / ', h('span', { id: 'tcDur' }, '0:00.0')),
     h('span', { class: 'xs t3', id: 'fpsTag' }),
-    h('span', { class: 'xs t2', id: 'atShot' }),
-    h('span', { class: 'sp' }),
+    h('span', { class: 'xs t2', id: 'atShot' })),
+    h('div', { class: 'play-actions' },
     h('button', { class: 'pill sm', id: 'rateBtn', type: 'button', title: '播放速度，点一下换一档', onclick: cycleRate }, '1×'),
     h('button', { class: 'icon-btn', id: 'muteBtn', type: 'button', title: '静音', 'aria-label': '静音', 'aria-pressed': 'false', onclick: toggleMute, html: ICON.sound }),
     h('button', { class: 'icon-btn', type: 'button', title: '全屏  F（双击画面也行）', 'aria-label': '全屏', onclick: toggleFull, html: ICON.full }),
-    h('button', { class: 'pill sm on', id: 'markBtn', type: 'button', onclick: mark, html: ICON.flag + ' 打标记 <span class="kbd" style="margin-left:2px">M</span>' })));
+    h('button', { class: 'pill sm on', id: 'markBtn', type: 'button', onclick: mark, html: ICON.flag + ' 打标记 <span class="kbd" style="margin-left:2px">M</span>' }))));
   v.append(h('div', { class: 'tlb', id: 'tlBlock' }, h('div', { class: 'tlb-h', id: 'tlHead' }), h('div', { class: 'tl compact', id: 'tl' }, h('div', { class: 'tl-scroll', id: 'tlScroll', onwheel: tlWheel }, h('div', { class: 'tl-inner', id: 'tlInner' })))));
   v.append(h('div', { class: 'keys', id: 'keys' }));
   $('#preview').addEventListener('dblclick', e => { if (!e.target.closest('button')) toggleFull(); });
@@ -1391,7 +1524,7 @@ async function renderProgress(force) {
   const v = $('#v-progress'); v.innerHTML = '';
   if (!S.segs || force) { v.append(h('p', { class: 's t3' }, '读取中…')); try { S.segs = await api('/api/segments'); } catch (e) { v.innerHTML = ''; v.append(h('p', { class: 'err' }, '读不到分段表：' + e.message)); return; } v.innerHTML = ''; }
   if (selectedId) S.selSeg = S.segs?.rows?.find(r => r.id === selectedId) || null;
-  const head = h('div', { class: 'head', style: 'margin-bottom:20px' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, '进度'), h('span', { class: 'sub' }, S.segs.found ? S.segs.path : '脚本/分段表.md')), h('div', { class: 'actions' }, h('button', { class: 'pill sm', type: 'button', onclick: () => { renderProgress(true); } }, '刷新')));
+  const head = h('div', { class: 'head', style: 'margin-bottom:20px' }, h('div', { class: 'title-row' }, h('span',{class:'workspace-label'},'项目管理'), h('h1', { class: 'title' }, '进度'), h('span', { class: 'sub' }, S.segs.found ? S.segs.path : '脚本/分段表.md')), h('div', { class: 'actions' }, h('button', { class: 'pill sm', type: 'button', onclick: () => { renderProgress(true); } }, '刷新')));
   v.append(head);
   if (!S.segs.found) { v.append(h('div', { class: 'empty' }, h('div', { class: 'h' }, '还没有分段表'), h('p', {}, '脚本技能写出分段表之后，这里就是进度表：一段一行六格，哪格空着哪格就是下一步。'))); renderAuxProgress(); return; }
   v.append(h('p', { class: 's t2', style: 'margin:-8px 0 16px;font-family:var(--mono);font-size:12px' }, S.segs.status));
@@ -1405,7 +1538,7 @@ async function renderProgress(force) {
       ...cols.map(c => { const val = r.cells[c]; const cls = !val ? (c === firstEmpty ? 'cell-next' : '') : /返修|重出|✗|退回|复核/.test(val) ? 'cell-redo' : /✓|候选|选|条/.test(val) ? 'cell-ok' : ''; return h('td', { class: 'c ' + cls }, val || (c === firstEmpty ? '← 下一步' : '')); }));
     tb.append(tr);
   });
-  table.append(tb); v.append(h('div', { class: 'table-wrap' }, table));
+  table.append(tb); v.append(h('div', { class: 'table-wrap', role:'region', 'aria-label':'镜头进度表', tabindex:0 }, table));
   renderAuxProgress();
 }
 const ROLE = { product: '产品', identity: '人物', location: '场景', plate: '机位', prop: '道具', frame: '构图', look: '质感', first_frame: '首帧', last_frame: '尾帧' };
@@ -1635,7 +1768,7 @@ async function renderLibrary(force) {
     try { localStorage.setItem(libSortKey(), S.libSort); } catch (e) {}
     renderLibraryBody();
   } }, ...[['asc', '序号升序 ↑'], ['desc', '序号降序 ↓']].map(([value, label]) => h('option', { value, selected: libSortMode() === value }, label)));
-  v.append(h('div', { class: 'head', style: 'margin-bottom:20px' }, h('div', { class: 'title-row' }, h('h1', { class: 'title' }, '素材库'), h('span', { class: 'sub' }, S.lib.found ? `${all.length} 个文件` : '素材库/')),
+  v.append(h('div', { class: 'head', style: 'margin-bottom:20px' }, h('div', { class: 'title-row' }, h('span',{class:'workspace-label'},'项目资源'), h('h1', { class: 'title' }, '素材库'), h('span', { class: 'sub' }, S.lib.found ? `${all.length} 个文件` : '素材库/')),
     h('div', { class: 'actions', style: 'align-items:center;flex-wrap:wrap' }, search, sort, h('button', { class: 'pill sm', onclick: openUpscale }, '超分工作台'), h('div', { class: 'seg', id: 'libCats' }, ...['全部', ...cats].map(c => h('button', { type: 'button', 'aria-pressed': S.libCat === c ? 'true' : 'false', onclick: () => { S.libCat = c; $$('#libCats button').forEach(b => b.setAttribute('aria-pressed', b.textContent === c ? 'true' : 'false')); renderLibraryBody(); } }, c))), h('button', { class: 'pill sm', type: 'button', onclick: () => renderLibrary(true) }, '刷新'))));
   v.append(h('div', { id: 'libBody' }));
   renderLibraryBody(); renderAuxLibrary();
@@ -1799,7 +1932,7 @@ function showAutoPacket(p){
 $('#generationBtn').addEventListener('click', async () => {
   const dialog = h('dialog', {class:'review-dialog','aria-label':'模型生成与单镜返修'});
   const jobs = h('div',{},'正在读取返修任务…');
-  const form = h('div',{class:'generation-fields'});
+  const form = h('div',{class:'form-grid surface'});
   const shot = h('select',{'aria-label':'返修镜头'});
   const provider = h('select',{'aria-label':'生成方式'},
     h('option',{value:'rife'},'本机 RIFE · 补帧'),
@@ -1818,7 +1951,7 @@ $('#generationBtn').addEventListener('click', async () => {
   const watermark = h('select',{'aria-label':'交付水印'},h('option',{value:'keep'},'保留水印'),h('option',{value:'remove'},'申请无水印交付'));
   const spend = h('input',{type:'checkbox','aria-label':'同意本次积分预留'});
   const field = (name, control) => h('label',{class:'s'},name,control);
-  const external = h('div',{class:'generation-fields',hidden:true,style:'display:none'},
+  const external = h('div',{class:'form-grid surface',hidden:true,style:'display:none'},
     field('画布 ID',canvas),field('模型',model),field('提示词',prompt),field('首帧节点',refs),
     field('模型参数',params),field('本次预计积分',credits),field('本单积分上限',budget),
     field('交付水印',watermark),field('同意按本次额度提交',spend));
@@ -2029,7 +2162,7 @@ $('#finishingBtn').addEventListener('click', async () => {
         const duration = h('input',{type:'number',min:.01,step:.01,value:2});
         card.append(h('details',{},h('summary',{},'新建字幕或音量修订'),
           h('p',{class:'s t3'},'基于 Studio 管理的草稿副本。剪映内的修改保存在其原生项目中。'),
-          h('div',{class:'generation-fields'},field('片段',media),field('音量 %',volume),
+          h('div',{class:'form-grid surface'},field('片段',media),field('音量 %',volume),
             field('新增字幕（可空）',caption),field('字幕起点（秒）',start),field('字幕时长（秒）',duration)),
           button('保存为新修订',()=>{
             const requestId = crypto.randomUUID().replaceAll('-', '');
@@ -2171,7 +2304,7 @@ $('#episodeBtn').addEventListener('click', async () => {
     const segments=h('input',{type:'text','aria-label':'镜号范围',value:(project.rows || []).map(row=>row.id).join(', ')});
     const source=select('时间线来源',[['auto','已有时间线优先'],['current','只用当前时间线'],['candidates','从已关联候选重新选片']]);
     const target=select('交付方式',[['rough','Studio 初剪'],['jianying','交给剪映精修']]);
-    const repair=h('div',{class:'generation-fields'});
+    const repair=h('div',{class:'form-grid surface'});
     const shot=select('返修镜头',(project.rows || []).map(row=>[row.id,row.id+' · '+row.scene]));
     const issue=h('input',{type:'text','aria-label':'本地补帧问题'});
     const preserve=h('input',{type:'text','aria-label':'必须保留的内容'});
@@ -2196,7 +2329,7 @@ $('#episodeBtn').addEventListener('click', async () => {
     });
     dialog.append(h('section',{class:'task-card'},
       h('p',{class:'s t3'},'按填写顺序执行。此页面发起的制作使用零平台积分，支持本地补帧。LibTV 返修及预算可由智能体按授权提交。'),
-      h('div',{class:'generation-fields'},field('模板',template),field('镜号（逗号分隔）',segments),field('来源',source),field('交付',target)),
+      h('div',{class:'form-grid surface'},field('模板',template),field('镜号（逗号分隔）',segments),field('来源',source),field('交付',target)),
       repair,adoptField,h('p',{class:'s'},h('label',{},authorized,' 授权所选范围内的制作步骤，平台积分上限为 0')),launch),runs);
     await refresh();
   } catch(error) { feedback.textContent=error.message; }
@@ -2224,13 +2357,16 @@ async function openQuality() {
   try {
     let state = await api('/api/quality');
     const [segments,library,finals,candidates] = await Promise.all([api('/api/segments'),api('/api/library'),api('/api/finals'),api('/api/candidates')]);
-    const dialog = h('dialog',{class:'review-dialog quality-form','aria-label':'连戏与质检'});
+    const dialog = h('dialog',{class:'review-dialog','aria-label':'连戏与质检'});
+    const field = (label,control,wide=false)=>h('label',{class:wide?'full-field':null},label,control);
     const refs = h('div'), shot = h('div'), reports = h('div');
     const select = (label,options) => h('select',{'aria-label':label,class:'select'},...options.map(([value,text])=>h('option',{value},text)));
     const assetChoice = select('参考卡版本编辑',[['','新建参考卡'],...state.assets.map(a=>[a.id,a.versions.at(-1).name])]);
     const name = h('input',{'aria-label':'参考名称',placeholder:'名称'}), note = h('textarea',{'aria-label':'参考说明',placeholder:'人物外观、服装、道具或场景的固定要求'});
     const kind = select('参考类型',['人物','服装','道具','场景'].map(x=>[x,x]));
-    const image = select('参考图片',(library.items || []).filter(x=>x.kind==='image').map(x=>[x.path,x.path]));
+    const pictures = (library.items || []).filter(x=>x.kind==='image');
+    const image = select('参考图片',pictures.length ? pictures.map(x=>[x.path,x.path]) : [['','暂无可用图片']]);
+    image.disabled = !pictures.length;
     const error = h('p',{class:'s t3'});
     function renderRefs() {
       refs.replaceChildren();
@@ -2250,15 +2386,15 @@ async function openQuality() {
         const ctx=await api('/api/quality-context?segment='+encodeURIComponent(sid.value)+'&final='+encodeURIComponent(film.value));
         if (request !== shotRequest) return;
         const requirements=h('textarea',{'aria-label':'镜头连戏要求',placeholder:'每行一项，例如：右手持桃核；服装不变'},ctx.shot.requirements);
-        const choices=h('div');
+        const choices=h('div',{class:'form-grid'});
         const selected=new Set(ctx.shot.references.map(x=>x.id));
         state.assets.forEach(a=>choices.append(h('label',{},h('input',{type:'checkbox',checked:selected.has(a.id),onchange:e=>e.target.checked?selected.add(a.id):selected.delete(a.id)}),a.versions.at(-1).name)));
-        shot.append(h('p',{class:'s'},'连戏状态：'+ctx.status),requirements,choices,h('button',{class:'pill sm',onclick:async()=>{try{state=await post('/api/quality',{action:'shot',revision:ctx.revision,segment:sid.value,requirements:requirements.value,assets:[...selected]});await renderShot();}catch(e){toast(e.message,'bad');}}},'保存要求与最新参考版本'));
+        shot.append(h('p',{class:'s'},'连戏状态：'+ctx.status),h('div',{class:'form-grid'},field('镜头连戏要求',requirements,true)),choices,h('button',{class:'pill sm',onclick:async()=>{try{state=await post('/api/quality',{action:'shot',revision:ctx.revision,segment:sid.value,requirements:requirements.value,assets:[...selected]});await renderShot();}catch(e){toast(e.message,'bad');}}},'保存要求与最新参考版本'));
         ctx.references.forEach(r=>{if(r.record)shot.append(h('div',{class:'reference-card'},h('img',{src:fileUrl(r.record.image),alt:r.record.name}),h('p',{class:'s'},`${r.record.name} · 已引用 v${r.version}${r.new_version?' · 有新版本，请复核':''}${r.current_hash!==r.record.fingerprint?' · 图片内容已变化':''}`)));});
-        const values={};const grid=h('div',{class:'quality-grid'});
-        ctx.checks.forEach(key=>{const el=select(key,[['pending','待检查'],['pass','通过'],['fail','有问题']]);el.value=ctx.review?.checks[key] || 'pending';values[key]=el;grid.append(h('label',{},key,el));});
+        const values={};const grid=h('div',{class:'form-grid'});
+        ctx.checks.forEach(key=>{const el=select(key,[['pending','待检查'],['pass','通过'],['fail','有问题']]);el.value=ctx.review?.checks[key] || 'pending';values[key]=el;grid.append(field(key,el));});
         const comment=h('textarea',{'aria-label':'连戏问题说明',placeholder:'发现的问题和定位说明'},ctx.review?.note || '');
-        shot.append(grid,comment,h('button',{class:'pill sm',disabled:!ctx.context.confirmed,onclick:async()=>{try{state=await post('/api/quality',{action:'review',revision:ctx.revision,segment:sid.value,final:film.value,signature:ctx.signature,checks:Object.fromEntries(Object.entries(values).map(([k,v])=>[k,v.value])),note:comment.value});await renderShot();}catch(e){toast(e.message,'bad');}}},'保存人工检查'));
+        shot.append(grid,h('div',{class:'form-grid'},field('连戏问题说明',comment,true)),h('button',{class:'pill sm',disabled:!ctx.context.confirmed,onclick:async()=>{try{state=await post('/api/quality',{action:'review',revision:ctx.revision,segment:sid.value,final:film.value,signature:ctx.signature,checks:Object.fromEntries(Object.entries(values).map(([k,v])=>[k,v.value])),note:comment.value});await renderShot();}catch(e){toast(e.message,'bad');}}},'保存人工检查'));
         if(!ctx.context.confirmed)shot.append(h('p',{class:'s warn-t'},'请先在进度页确认此成片对应的剪辑表，再保存人工检查。'));
         const neighbors=ctx.context.neighbors;
         const index=neighbors.findIndex(c=>c.i===ctx.context.clip?.i);
@@ -2274,7 +2410,7 @@ async function openQuality() {
           if(r.error)card.append(h('p',{class:'err s'},r.error));
           if(r.metadata)card.append(h('p',{class:'s t3'},`${r.metadata.width}×${r.metadata.height} · ${r.metadata.fps}fps · 解码：${r.decode || '未通过'}${r.peak_db!=null?' · 峰值 '+r.peak_db+'dBFS':''}`));
           if(r.status==='completed' && !r.events.length)card.append(h('p',{class:'s'},'未发现当前检测范围内的技术疑点，内容仍需人工检查。'));
-          r.events.forEach(event=>card.append(h('button',{class:'pill sm',disabled:r.stale,onclick:()=>showQualityEvidence(r,event)},`${event.type} · ${fmt(event.t)}–${fmt(event.end)}`)));
+          if (r.events.length) card.append(h('div',{class:'review-actions'},...r.events.map(event=>h('button',{class:'pill sm',disabled:r.stale,onclick:()=>showQualityEvidence(r,event)},`${event.type} · ${fmt(event.t)}–${fmt(event.end)}`))));
           reports.append(card);
         });
       }catch(e){reports.textContent=e.message;}
@@ -2282,9 +2418,10 @@ async function openQuality() {
     dialog.append(h('div',{class:'review-actions'},h('b',{},'连戏与质检'),h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),
       h('p',{class:'s t3'},'参考卡保留版本；人工连戏与成片绑定。技术检测提供疑点，不能代替审片。'),
       h('section',{class:'quality-section'},h('h3',{},'人物 / 服装 / 道具 / 场景参考'),refs,
-        assetChoice,kind,name,image,note,h('button',{class:'pill sm',onclick:async()=>{try{state=await post('/api/quality',{action:'asset',revision:state.revision,id:assetChoice.value||null,name:name.value,kind:kind.value,image:image.value,note:note.value});error.textContent='已保存新参考版本';assetChoice.replaceChildren(h('option',{value:''},'新建参考卡'),...state.assets.map(a=>h('option',{value:a.id},a.versions.at(-1).name)));renderRefs();await renderShot();}catch(e){error.textContent=e.message;}}},'保存参考修订'),error),
-      h('section',{class:'quality-section'},h('h3',{},'镜头要求与连戏检查'),sid,film,shot),
-      h('section',{class:'quality-section'},h('h3',{},'技术质检'),h('p',{class:'s t3'},'黑帧≥0.1秒、异常静帧≥1秒、静音≥0.5秒。固定镜头与安静段可能是正常设计，请看片判断。'),source,h('button',{class:'pill sm',onclick:async()=>{try{await post('/api/quality-scan',{path:source.value});await refreshReports();}catch(e){toast(e.message,'bad');}}},'开始技术质检'),reports));
+        h('div',{class:'form-grid quality-fields'},field('参考卡',assetChoice),field('参考类型',kind),field('参考名称',name),field('参考图片',image),field('参考说明',note,true)),
+        h('button',{class:'pill primary',disabled:!pictures.length,onclick:async()=>{try{state=await post('/api/quality',{action:'asset',revision:state.revision,id:assetChoice.value||null,name:name.value,kind:kind.value,image:image.value,note:note.value});error.textContent='已保存新参考版本';assetChoice.replaceChildren(h('option',{value:''},'新建参考卡'),...state.assets.map(a=>h('option',{value:a.id},a.versions.at(-1).name)));renderRefs();await renderShot();}catch(e){error.textContent=e.message;}}},'保存参考修订'),error),
+      h('section',{class:'quality-section'},h('h3',{},'镜头要求与连戏检查'),h('div',{class:'form-grid quality-fields'},field('镜头',sid),field('成片版本',film)),shot),
+      h('section',{class:'quality-section'},h('h3',{},'技术质检'),h('p',{class:'s t3'},'黑帧≥0.1秒、异常静帧≥1秒、静音≥0.5秒。固定镜头与安静段可能是正常设计，请看片判断。'),h('div',{class:'form-grid'},field('检测视频',source,true)),h('button',{class:'pill primary',disabled:!source.value,onclick:async()=>{try{await post('/api/quality-scan',{path:source.value});await refreshReports();}catch(e){toast(e.message,'bad');}}},'开始技术质检'),reports));
     const timer=setInterval(refreshReports,2000);dialog.addEventListener('close',()=>{clearInterval(timer);dialog.remove();});
     document.body.append(dialog);dialog.showModal();renderRefs();await renderShot();await refreshReports();
   }catch(e){toast(e.message,'bad');}
@@ -2435,12 +2572,12 @@ async function openEditor() {
       body.replaceChildren();
       if (!state.clips.length) body.append(h('p', { class: 's t3' }, '草稿为空。可导入原剪辑、同步已选候选，或添加素材。'));
       state.clips.forEach((clip, index) => {
-        const row = h('div', { style: 'padding:12px 0;border-bottom:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;align-items:center' });
+        const row = h('div', { class:'editor-clip' });
         const id = h('input', { value: clip.id, style: 'width:90px', 'aria-label': '镜头ID', onchange: e => { clip.id = e.target.value; changed(); } });
-        const select = h('select', { style: 'max-width:280px', 'aria-label': '候选素材', onchange: e => { clip.src = e.target.value; if (previewClip === clip) clearPreview(); changed(); } });
+        const select = h('select', { 'aria-label': '候选素材', onchange: e => { clip.src = e.target.value; if (previewClip === clip) clearPreview(); changed(); } });
         const paths = [...new Set([clip.src, ...candidates.map(x => x.path)])];
         paths.forEach(path => select.append(h('option', { value: path, selected: path === clip.src }, path)));
-        row.append(id, select);
+        row.append(h('label',{class:'s'},'镜头ID',id),h('label',{class:'s editor-source'},'候选素材',select));
         [['in', '入点秒'], ['out', '出点秒'], ['a', '音量倍数']].forEach(([key, label]) => row.append(h('label', { class: 's' }, label, h('input', { type: 'number', min: '0', step: '.01', value: clip[key], style: 'width:80px', onchange: e => { clip[key] = Number(e.target.value); changed(); } }))));
         row.append(h('button', { class: 'pill sm', onclick: () => { preview.pause(); previewClip = clip; previewName.textContent = '预览：' + clip.id; preview.src = fileUrl(clip.src); preview.onloadedmetadata = () => { preview.currentTime = clip.in; preview.volume = Math.min(1, clip.a); }; } }, '预览选段'));
         [-1, 1].forEach(delta => row.append(h('button', { class: 'pill sm', disabled: index + delta < 0 || index + delta >= state.clips.length, onclick: () => { [state.clips[index], state.clips[index + delta]] = [state.clips[index + delta], state.clips[index]]; changed(); draw(); } }, delta < 0 ? '上移' : '下移')));
@@ -2523,15 +2660,16 @@ function tlDraw() {
   inner.append(row('时间', 'ruler-row', true, rl));
   if (open) {
     const pps = TL.pps, blk = (w, cls) => (w < 24 ? cls + ' narrow' : cls);
+    const spanWidth = duration => { const width = duration * pps; return Math.max(0,width - Math.min(1,width / 4)); };
     const vl = lane();
-    d.V.forEach(c => vl.append(h('button', { class: blk(c.dur * pps, 'clip' + (c.kind === 'live' || c.kind === 'image' ? ' video' : '')), type: 'button', 'data-v': c.i, title: `第 ${c.i + 1} 镜 · ${c.id} · ${fmt(c.start)}–${fmt(c.start + c.dur)}`, 'aria-selected': TL.sel?.type === 'V' && TL.sel.i === c.i ? 'true' : 'false', style: `left:${c.start * pps}px;width:${Math.max(2, c.dur * pps - 1)}px`, onclick: e => { e.stopPropagation(); tlSelect('V', c.i); } },
+    d.V.forEach(c => vl.append(h('button', { class: blk(c.dur * pps, 'clip' + (c.kind === 'live' || c.kind === 'image' ? ' video' : '')), type: 'button', 'data-v': c.i, title: `第 ${c.i + 1} 镜 · ${c.id} · ${fmt(c.start)}–${fmt(c.start + c.dur)}`, 'aria-selected': TL.sel?.type === 'V' && TL.sel.i === c.i ? 'true' : 'false', style: `left:${c.start * pps}px;width:${spanWidth(c.dur)}px`, onclick: e => { e.stopPropagation(); tlSelect('V', c.i); } },
       c.kind === 'live' ? h('span', { class: 'wave' }) : null, h('span', { class: 'name' }, c.kind === 'black' ? '黑' : c.kind === 'white' ? '白' : c.id))));
     inner.append(row('画面', 'v', false, vl, `${d.V.length} 镜`));
-    if (d.subs.length) { const sl = lane(); d.subs.forEach(x => sl.append(h('div', { class: 'clip sub', title: x.text, style: `left:${x.start * pps}px;width:${Math.max(2, (x.end - x.start) * pps - 1)}px` }, h('span', { class: 'name' }, x.text)))); inner.append(row('台词/旁白', '', true, sl, `${d.subs.length} 句`)); }
+    if (d.subs.length) { const sl = lane(); d.subs.forEach(x => sl.append(h('div', { class: blk((x.end - x.start) * pps,'clip sub'), title: x.text, style: `left:${x.start * pps}px;width:${spanWidth(x.end - x.start)}px` }, h('span', { class: 'name' }, x.text)))); inner.append(row('台词/旁白', '', true, sl, `${d.subs.length} 句`)); }
     for (const [kind, name] of Object.entries(KIND)) {
       const items = d.A.filter(x => x.kind === kind); if (!items.length) continue;
       const al = lane();
-      items.forEach(x => al.append(h('button', { class: blk(x.dur * pps, 'clip audio'), type: 'button', 'data-a': x.i, title: `${x.name} · ${fmt(x.start)} · ${x.dur.toFixed(1)}s · ${x.gain} dB`, 'aria-selected': TL.sel?.type === 'A' && TL.sel.i === x.i ? 'true' : 'false', style: `left:${x.start * pps}px;width:${Math.max(2, x.dur * pps - 1)}px`, onclick: e => { e.stopPropagation(); tlSelect('A', x.i); } },
+      items.forEach(x => al.append(h('button', { class: blk(x.dur * pps, 'clip audio'), type: 'button', 'data-a': x.i, title: `${x.name} · ${fmt(x.start)} · ${x.dur.toFixed(1)}s · ${x.gain} dB`, 'aria-selected': TL.sel?.type === 'A' && TL.sel.i === x.i ? 'true' : 'false', style: `left:${x.start * pps}px;width:${spanWidth(x.dur)}px`, onclick: e => { e.stopPropagation(); tlSelect('A', x.i); } },
         h('span', { class: 'wave' }), h('span', { class: 'name' }, x.name.replace(/\.[^.]+$/, '') + (x.loop ? ' ↻' : '')))));
       inner.append(row(name, '', kind === 'sfx', al, `${items.length}`));
     }
