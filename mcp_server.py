@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 
 PROTOCOLS=('2025-11-25','2025-06-18')
-DESCRIPTION='Lazy Studio本机工具。先studio_project获取project_id、revision和operations。studio_call复用网页业务。所有写操作须提交project_id、expected_revision、稳定idempotency_key；重放必须保留原请求。返回needs_reconciliation时先查询任务，禁止自动重提。任务成功不等于内容过审。整集制作使用 episode.start，传明确授权的镜头范围和积分上限；通过 episode.get 查询阶段、恢复原运行并查看交付报告。'
+DESCRIPTION='Easy Studio本机工具。先studio_project获取project_id、revision和operations。studio_call复用网页业务。所有写操作须提交project_id、expected_revision、稳定idempotency_key；重放必须保留原请求。返回needs_reconciliation时先查询任务，禁止自动重提。任务成功不等于内容过审。整集制作使用 episode.start，传明确授权的镜头范围和积分上限；通过 episode.get 查询阶段、恢复原运行并查看交付报告。'
 
 
 def request(url,token,path,body=None):
@@ -41,7 +41,7 @@ def handle(message,url,token,initialized):
     if method=='initialize':
         preferred=params.get('protocolVersion')
         protocol=preferred if preferred in PROTOCOLS else PROTOCOLS[0]
-        return {'protocolVersion':protocol,'capabilities':{'tools':{}},'serverInfo':{'name':'lazy-studio','version':pathlib.Path(__file__).with_name('VERSION').read_text().strip()},'instructions':DESCRIPTION},True
+        return {'protocolVersion':protocol,'capabilities':{'tools':{}},'serverInfo':{'name':'easy-studio','version':pathlib.Path(__file__).with_name('VERSION').read_text().strip()},'instructions':DESCRIPTION},True
     if method=='ping':return {},initialized
     if not initialized:raise ValueError('请先initialize；支持2025-11-25/2025-06-18协议')
     if method=='tools/list':return {'tools':tools()},initialized

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start the local Lazy Studio viewer; forwards --root, --port and --open."""
+"""Start the local Easy Studio viewer; forwards --root, --port and --open."""
 import pathlib
 import runpy
 import sys

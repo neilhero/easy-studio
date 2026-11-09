@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lazy Studio</title>
+<title>Easy Studio</title>
 <style>
 /* ===== 出厂套件（产品经理 6.0 · 浮岛）：tokens / base / timeline / gallery 原样拼入；要换皮只改 :root 的变量 ===== */
 /* 出厂 token（浮岛）。这是兜底：没样板、没更好的想法时用它；有自己的体系就换成自己的。
@@ -986,7 +986,7 @@ details.rec[open] > summary { margin-bottom: 8px; }
 <body>
 <div class="shell" id="shell">
   <nav class="island nav" aria-label="视图">
-    <div class="brand" title="Lazy Studio · 放映室"><span class="brand-mark" aria-hidden="true"></span><b class="brand-name">Lazy Studio</b></div>
+    <div class="brand" title="Easy Studio · 放映室"><span class="brand-mark" aria-hidden="true"></span><b class="brand-name">Easy Studio</b></div>
     <div class="nav-label">工作区</div>
     <button class="i" type="button" data-view="watch" aria-current="page" title="看片"><span class="ic"></span><span class="l">看片</span></button>
     <button class="i" type="button" data-view="progress" title="进度"><span class="ic"></span><span class="l">进度</span></button>
@@ -1011,7 +1011,7 @@ details.rec[open] > summary { margin-bottom: 8px; }
     <section class="view" id="v-watch"></section>
     <section class="view" id="v-progress" hidden></section>
     <section class="view" id="v-library" hidden></section>
-    <div class="app-version" id="appVersion" aria-label="Lazy Studio程序版本">Lazy Studio</div>
+    <div class="app-version" id="appVersion" aria-label="Easy Studio程序版本">Easy Studio</div>
   </main>
   <aside class="island aux" id="aux">
     <div class="grip-x" id="auxGrip" role="separator" aria-orientation="vertical" aria-label="拖动改侧栏宽度，双击还原，左右键微调" tabindex="0"></div>
@@ -2015,7 +2015,7 @@ $('#generationBtn').addEventListener('click', async () => {
           : `第 ${a.number}/${j.max_attempts} 次 · 已占用 ${j.budget_used}/${j.max_credits} 积分 · 本次预留 ${a.reserved} · 实扣 ${a.credits ?? '未知'}${a.task_id?' · LibTV '+a.task_id:''}`));
       const buttons=h('div',{class:'review-actions'});
       if (j.provider==='libtv' && j.phase!=='done') {
-        buttons.append(action('复制给 Codex',()=>copyText('请推进 Lazy Studio 的 LibTV 返修任务 '+j.id,'已复制返修任务')));
+        buttons.append(action('复制给 Codex',()=>copyText('请推进 Easy Studio 的 LibTV 返修任务 '+j.id,'已复制返修任务')));
       }
       if (j.output) {
         buttons.append(h('a',{href:fileUrl(j.output),class:'pill sm',target:'_blank',rel:'noopener'},'看片候选'));
@@ -2792,14 +2792,12 @@ document.addEventListener('keydown', e => {
 async function boot() {
   try {
     S.proj = await api('/api/project');
-    $('#appVersion').textContent = 'Lazy Studio v' + S.proj.version;
+    $('#appVersion').textContent = 'Easy Studio v' + S.proj.version;
     [S.finals, TL.data] = await Promise.all([api('/api/finals'), api('/api/timeline').catch(() => ({ found: false }))]);
     await loadFeedback(); tlLoadPrefs();
   } catch (e) {
     $('#v-watch').innerHTML = `<div class="empty bad"><div class="h">连不上放映室的服务器</div><p>${esc(e.message)}</p></div>`; return;
   }
-  document.title = `Lazy Studio · ${S.proj.name}`;
-  $('.nav .brand').title = `Lazy Studio · ${S.proj.name}`;
   renderWatch(); renderAuxWatch(); switchView(['progress', 'library'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'watch'); applyUI();
   setInterval(pollStat, 3000);
   window.__studio = { S, TL, pollStat, live: () => LIVE };   // 给自测脚本看内部状态用

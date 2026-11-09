@@ -1,10 +1,8 @@
-# Lazy Studio
+# Easy Studio
 
-当前版本 **v1.0.1**。页面版本来自 `VERSION`，Git 标签为 `v1.0.1`。
+当前版本 **v1.0.2**。页面版本来自 `VERSION`，Git 标签为 `v1.0.2`。
 
 本机影片放映室：看片、逐帧检查、查看剪辑时间线、对照版本，并保存带时间码和截帧的反馈。
-
-这是从 [FEICAI CLUB / ad-storyboarder](https://github.com/feicaiclub/ad-storyboarder) 提取的独立维护版本，以本地实际使用的界面和服务为基线。上游提交为 `ea420370a0881db7a179dbbb16d02f3f121a6492`（2026-10-19，广告分镜师 v1.0）。保留原 MIT 许可证和作者声明。
 
 ## 运行
 
@@ -88,15 +86,15 @@ UPSTREAM.md                来源记录
 REVIEW-WORKFLOW.md         审片与数据格式
 ```
 
-当前适配：用 `FFPROBE_BIN` 或 PATH 调用 FFprobe，移除个人机器的绝对路径，不依赖剪映 MCP 的 Python 包。播放器、逐帧、反馈、进度和时间线界面沿用上游。
+当前适配：用 `FFPROBE_BIN` 或 PATH 调用 FFprobe，移除个人机器的绝对路径，不依赖剪映 MCP 的 Python 包。播放器、逐帧、反馈、进度和时间线由本机 Studio 显示。
 
-仅对可信的本机项目使用。时间线文件 `剪辑/剪辑表.py` 会作为 Python 执行；不要加载陌生项目中的脚本。服务对 Host/Origin、隐藏路径和项目越界的限制沿用上游。
+仅对可信的本机项目使用。时间线文件 `剪辑/剪辑表.py` 会作为 Python 执行；不要加载陌生项目中的脚本。服务校验 Host/Origin、隐藏路径和项目目录边界。
 
 当前 v0.4 提供独立初剪、版本导出与本机批量超分。局部生成返修留待后续。
 
-## 来源与许可
+## 许可证
 
-原作者：废才俱乐部（FEICAI CLUB）。本版本以 MIT 许可证分发，详见 [LICENSE](LICENSE) 和 [来源记录](UPSTREAM.md)。
+本软件按 MIT 许可证分发。完整条款见 [LICENSE](LICENSE)。
 
 ## v0.2 镜头评审
 
@@ -159,7 +157,7 @@ v0.4.2：素材分类使用共用外框的分段控件，内部无独立边框�
 
 ## v0.5 连戏与技术质检
 
-页面右下角常显运行服务的 `Lazy Studio v0.5.0`，版本直接来自 `VERSION` 和 `/api/project`。导航新增“连戏与质检”（窄屏显示“质检”）。
+页面右下角常显运行服务的 `Easy Studio v0.5.0`，版本直接来自 `VERSION` 和 `/api/project`。导航新增“连戏与质检”（窄屏显示“质检”）。
 
 - 参考卡支持人物、服装、道具、场景，选择素材库中的图片，填写名称与说明。编辑参考卡时追加修订，保留历史版本及图片指纹。引用图片是项目文件路径，不另复制图片；图片被覆盖时显示变化提示，旧图恢复需自行保留原文件。
 - 镜头要求可逐行填写，关联参考卡时固定其当前版本。人工连戏逐项记录人物服装、道具状态、站位视线、运动方向、光线、动作台词，可标待检查/通过/有问题；发现问题须填写说明。
@@ -182,7 +180,7 @@ v0.4.2：素材分类使用共用外框的分段控件，内部无独立边框�
 
 验证：35项回归测试通过，含真实MCP stdio到本机服务的三素材全流程、统一任务取消/重试、幂等与恢复、权限限制及既有功能。
 
-当前机器已通过Codex CLI注册lazy-studio本机MCP并做真实连接只读检查；具体宿主是否热加载以工具发现为准，新建聊天或重新连接后使用。
+当前机器已通过Codex CLI注册easy-studio本机MCP并做真实连接只读检查；具体宿主是否热加载以工具发现为准，新建聊天或重新连接后使用。
 
 
 ## macOS常驻运行（v0.6.1）
@@ -196,7 +194,7 @@ python3 service.py stop --root '/项目目录' --port 8790
 python3 service.py start --root '/项目目录' --port 8790
 ```
 
-安装仅登记当前项目的用户LaunchAgent，不安装系统级服务；只继承FFmpeg/FFprobe/Real-ESRGAN及Python缓存路径变量。配置位于用户 `Library/LaunchAgents/local.lazy-studio.<项目标识>.plist`，输出及错误日志位于项目 `.studio/logs/service.out.log`、`service.err.log`。同项目服务锁继续生效；安装时遇到手动服务或已加载服务会拒绝覆盖。stop会先检查未结束任务；stop后本次登录不自动重启，start可恢复，保留的安装配置会在下次登录加载。
+安装仅登记当前项目的用户LaunchAgent，不安装系统级服务；只继承FFmpeg/FFprobe/Real-ESRGAN及Python缓存路径变量。配置位于用户 `Library/LaunchAgents/local.easy-studio.<项目标识>.plist`，输出及错误日志位于项目 `.studio/logs/service.out.log`、`service.err.log`。同项目服务锁继续生效；安装时遇到手动服务或已加载服务会拒绝覆盖。stop会先检查未结束任务；stop后本次登录不自动重启，start可恢复，保留的安装配置会在下次登录加载。
 
 应用休眠/设备关机期间不保证本机服务响应；恢复登录后由launchd启动。后台程序崩溃可自动重启，但中断任务仍需按v0.6任务状态显式处理，不自动重复执行。
 

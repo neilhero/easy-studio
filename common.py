@@ -93,7 +93,7 @@ def abspath(p):
     return str(p if p.is_absolute() else ROOT / p)
 
 
-# 中文字体：环境变量 FEICAI_FONT 指定的优先，否则按系统找常见的几种。找不到返回 None（调用方退回默认字体，不报错）。
+# 中文字体：环境变量 EASY_STUDIO_FONT 指定的优先，否则按系统找常见的几种。找不到返回 None（调用方退回默认字体，不报错）。
 FONT_CANDIDATES = [
     "/System/Library/Fonts/PingFang.ttc", "/System/Library/Fonts/Hiragino Sans GB.ttc", "/System/Library/Fonts/STHeiti Medium.ttc",
     "/System/Library/Fonts/Supplemental/Songti.ttc", "/Library/Fonts/Arial Unicode.ttf",
@@ -105,7 +105,7 @@ FONT_CANDIDATES = [
 
 
 def font_path():
-    env = os.environ.get("FEICAI_FONT")
+    env = os.environ.get("EASY_STUDIO_FONT")
     if env and os.path.exists(env):
         return env
     return next((f for f in FONT_CANDIDATES if os.path.exists(f)), None)

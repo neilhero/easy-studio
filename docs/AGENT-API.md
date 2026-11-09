@@ -1,4 +1,4 @@
-# Lazy Studio 本机智能体接口 v1
+# Easy Studio 本机智能体接口 v1
 
 ## 范围与运行
 
@@ -16,15 +16,15 @@ python3 run.py --root '/项目目录' --port 8790 --import-root '/允许导入�
 
 ## MCP接入
 
-将以下内容作为支持本机stdio的宿主配置参考；不同宿主的配置位置和格式须分别核对。仓库安装本身不自动修改宿主全局配置，也不宣称ChatGPT远程会话能直连本机地址。当前机器已通过下述Codex CLI命令单独注册lazy-studio。
+将以下内容作为支持本机stdio的宿主配置参考；不同宿主的配置位置和格式须分别核对。仓库安装本身不自动修改宿主全局配置，也不宣称ChatGPT远程会话能直连本机地址。当前机器已通过下述Codex CLI命令单独注册easy-studio。
 
 ```json
 {
   "mcpServers": {
-    "lazy-studio": {
+    "easy-studio": {
       "command": "/你的Python绝对路径/python3",
       "args": [
-        "/代码目录/lazy-studio/mcp_server.py",
+        "/代码目录/easy-studio/mcp_server.py",
         "--url", "http://127.0.0.1:8790",
         "--token-file", "/项目目录/.studio/agent-token"
       ]
@@ -135,7 +135,7 @@ python3 run.py --root '/项目目录' --port 8790 --import-root '/允许导入�
 
 ## 当前机器的Codex注册
 
-本次升级已按[OpenAI Docs的MCP配置方式](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)使用 `codex mcp add lazy-studio -- <Python> <代理路径> --url <本机服务> --token-file <令牌文件路径>` 新增连接，并通过 `codex mcp get lazy-studio --json` 核对。配置只存令牌文件路径，不把令牌文本写进命令或Git。
+本次升级已按[OpenAI Docs的MCP配置方式](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)使用 `codex mcp add easy-studio -- <Python> <代理路径> --url <本机服务> --token-file <令牌文件路径>` 新增连接，并通过 `codex mcp get easy-studio --json` 核对。配置只存令牌文件路径，不把令牌文本写进命令或Git。
 
 该注册不等于当前聊天已热加载工具。新建本机Codex聊天或重新连接后，以是否发现studio_project/studio_call并能成功查询为准；本次已另用真实MCP进程对正式服务完成只读握手和项目查询。服务须保持运行，才能执行任务。
 

@@ -18,7 +18,7 @@ MEDIA_ENV=('FFMPEG_BIN','FFPROBE_BIN','REALESRGAN_BIN','REALESRGAN_MODELS','PYTH
 
 def config(root,port,imports,python=sys.executable,environment=None):
     root=pathlib.Path(root).resolve()
-    label='local.lazy-studio.'+hashlib.sha256(str(root).encode()).hexdigest()[:12]
+    label='local.easy-studio.'+hashlib.sha256(str(root).encode()).hexdigest()[:12]
     args=[str(python),str(HERE/'run.py'),'--root',str(root),'--port',str(port)]
     for source in imports:args+=['--import-root',str(pathlib.Path(source).resolve())]
     logs=root/'.studio'/'logs'

@@ -198,7 +198,7 @@ def new_record(app, body, snapshot, parent=None):
         if prior['identity'] != identity:
             raise ValueError('同一交接请求编号只能用于同一份草稿')
         return prior, False
-    record = {'schema': 1, 'id': token, 'parent_id': parent, 'name': 'LazyStudio-' + token,
+    record = {'schema': 1, 'id': token, 'parent_id': parent, 'name': 'EasyStudio-' + token,
               'at': now(), 'status': 'preparing', 'identity': identity, 'snapshot': snapshot}
     return record, True
 

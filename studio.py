@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """放映室：在浏览器里看成片、打带时间码和截帧的反馈，看进度表、素材库和剪辑时间线。默认做法，可改可换。
-  python3 .claude/tools/studio.py [--port 8787] [--root 项目根] [--open]
+  python3 run.py [--port 8787] [--root 项目根] [--open]
   只绑 127.0.0.1；只读项目目录，路径里带点的部分（.env、.claude）一律不发；
   每个请求校验 Host（防 DNS 重绑定）；写入（POST/PUT/DELETE）还要 Origin 是本机这个端口、POST/PUT 必须是 JSON——别的网页写不进来；
   反馈写进 反馈/待处理.md，截帧存 反馈/帧/；页面在同目录 studio.html。"""
@@ -747,7 +747,7 @@ def append_feedback(body):
 
 
 class H(BaseHTTPRequestHandler):
-    server_version = "LazyStudio/" + VERSION
+    server_version = "EasyStudio/" + VERSION
 
     def log_message(self, *a):
         pass

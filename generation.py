@@ -108,7 +108,7 @@ def attempt(job, quoted_credits):
     if len(job['attempts']) >= job['max_attempts'] or budget_used(job) + quoted_credits > job['max_credits']:
         raise ValueError('返修预算或重试次数已用完')
     number = len(job['attempts']) + 1
-    entry = {'number': number, 'key': f"lazy-repair-{job['id']}-{number}", 'reserved': quoted_credits,
+    entry = {'number': number, 'key': f"easy-repair-{job['id']}-{number}", 'reserved': quoted_credits,
              'credits': 0 if job['provider'] == 'rife' else None,
              'task_id': None, 'state': 'queued', 'started': time.time()}
     job['attempts'].append(entry)

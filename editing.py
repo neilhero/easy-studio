@@ -139,7 +139,7 @@ def manifest(app, final):
     p = app.safe(final + '.json')
     if p and p.is_file():
         data = json.loads(p.read_text())
-        if data.get('schema') == 'lazy-export-1' and data.get('film_hash') == app.file_hash(app.safe(final)):
+        if data.get('schema') in ('easy-export-1', 'lazy-export-1') and data.get('film_hash') == app.file_hash(app.safe(final)):
             return data
     return None
 
@@ -316,7 +316,7 @@ def render(app, executable, job):
                 if app.file_hash(app.safe(c['src'])) != c['fingerprint']:
                     raise ValueError('导出期间源素材变化，结果未发布')
             film_hash = app.file_hash(rendered)
-            data = {'schema': 'lazy-export-1', 'film_hash': film_hash, 'timeline': timeline(job['clips']), 'job': job['id'], 'revision': job['revision'], 'sources': {c['src']: c['fingerprint'] for c in job['clips']}}
+            data = {'schema': 'easy-export-1', 'film_hash': film_hash, 'timeline': timeline(job['clips']), 'job': job['id'], 'revision': job['revision'], 'sources': {c['src']: c['fingerprint'] for c in job['clips']}}
             # 先登记，再以硬链接发布：目标存在时失败，永不覆盖旧成片。
             with LOCK:
                 check_cancel()
