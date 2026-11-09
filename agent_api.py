@@ -18,10 +18,14 @@ import upscaling
 import automation
 import workspace
 import generation
+import finishing
 
 LOCK = threading.RLock()
 API_VERSION = '1'
 READS = {
+    'finishing.list':'列出剪映交接、修订关系、原生变化与回收片验收',
+    'finishing.preview':'source=current/draft/final/legacy；final 选填；预检微秒时间线、素材和不支持效果',
+
     'generation.providers':'查看 LibTV 宿主桥与本机 RIFE 可用能力',
     'generation.list':'查询返修任务、预算预留、已知实扣及候选',
     'generation.get':'job_id，查询返修任务与提供方原任务身份',
@@ -44,6 +48,13 @@ READS = {
     'timeline.get':'读取指定final的冻结快照，省略final时读取当前剪辑',
 }
 WRITES = {
+    'finishing.create':'source/final/signature；从预览生成一份独立可编辑剪映草稿',
+    'finishing.revise':'id/operations；基于管理副本创建新修订，保留原生编辑',
+    'finishing.publish':'id；剪映完全退出后注册一份新原生草稿',
+    'finishing.receive':'id/source/confirm_export=true；从项目或获准导入目录回收剪映实际导出的 MP4 或 MOV',
+    'finishing.scan':'final；检查回收成片的解码、黑静帧与声音',
+    'finishing.review':'final/film_hash/scan_id/status=approved|rejected/note；记录实看片复查',
+
     'generation.submit':'segment/provider/issue/preserve/evidence/max_attempts；LibTV另填libtv_project/model/prompt/params/references/watermark/max_credits/quoted_credits/confirm_spend；resume_task_id 仅回收已有任务',
     'generation.claim':'job_id/actor；认领 LibTV 当前步骤；未知受理仅 recover=true 后用同一请求恢复',
     'generation.record':'job_id/lease_token/outcome；登记真实原任务回执或授权交付下载',
@@ -143,6 +154,7 @@ def sync_assets(app,db):
 def revision(app,db):
     files=[app.SEG,app.REVIEW,app.FB,editing.DRAFT,quality.STATE,'反馈/返修问题.json']
     state={'files':{p:app.file_hash(app.safe(p)) for p in files},
+           'finishing':finishing.revision_state(app),
            'assets':[tuple(r) for r in db.execute('SELECT * FROM assets ORDER BY id')],
            'sequence':db.execute("SELECT value FROM meta WHERE key='sequence'").fetchone()[0]}
     return hashlib.sha256(json.dumps(state,sort_keys=True).encode()).hexdigest()
@@ -227,12 +239,14 @@ def dispatch(app,body):
         db.execute('INSERT INTO receipts VALUES(?,?,?,NULL)',(key,request,'dispatching'))
         db.commit()  # 先落盘；崩溃窗口保持待核对，不能自动重放副作用。
         try:
+            if op in ('finishing.create','finishing.revise'):
+                args={**args,'request_id':uuid.uuid5(uuid.UUID(body['project_id']),key).hex}
             result=write_operation(app,db,op,args)
             sync_assets(app,db)
             db.execute("UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='sequence'")
             tasks=task_sync(app,db)
             response={'result':result,'revision':revision(app,db),'api_version':API_VERSION}
-            if op in ('export.start','upscale.start','quality.scan','automation.start','automation.resume','generation.submit','generation.retry','generation.record','generation.export','tasks.retry'):
+            if op in ('export.start','upscale.start','quality.scan','finishing.scan','automation.start','automation.resume','generation.submit','generation.retry','generation.record','generation.export','tasks.retry'):
                 native_ids={j['id'] for j in result.get('jobs',[result]) if isinstance(j,dict) and 'id' in j}
                 response['tasks']=[t for t in tasks if t['native_id'] in native_ids]
             db.execute("UPDATE receipts SET state='completed',result=? WHERE key=?",(json.dumps(response,ensure_ascii=False),key))
@@ -247,6 +261,8 @@ def dispatch(app,body):
 
 
 def read_operation(app,db,op,args):
+    if op=='finishing.list':return finishing.listing(app)
+    if op=='finishing.preview':return finishing.preview(app,args)
     if op=='generation.providers':return generation.capabilities()
     if op=='generation.list':return {'items':generation.jobs(app)}
     if op=='generation.get':return generation.get(app,args.get('job_id'))
@@ -275,6 +291,7 @@ def read_operation(app,db,op,args):
         final=args.get('final')
         if not final:return app.api_timeline()
         if final not in {app.rel(p) for p,_,_ in app.final_videos()}:raise ValueError('成片不存在')
+        if finishing.returned(final):return finishing.UNMAPPED
         m=editing.manifest(app,final)
         if not m:raise ValueError('该成片没有指纹匹配的导出快照；请通过review.context核对旧项目')
         return m['timeline']
@@ -288,6 +305,8 @@ def read_operation(app,db,op,args):
 
 
 def write_operation(app,db,op,args):
+    if op.startswith('finishing.'):
+        return finishing.ACTIONS[op.split('.',1)[1]](app,args)
     if op=='generation.submit':
         return generation.submit(app,{**args,'segment':segment(db,args.get('segment'))})
     if op=='generation.claim':return generation.claim(app,args)

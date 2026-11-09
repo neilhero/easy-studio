@@ -881,7 +881,7 @@ body { -webkit-font-smoothing:antialiased; }
 .reference-card img { width:100%; height:100px; object-fit:contain; }
 .quality-section { margin-top:24px; border-top:1px solid var(--line); padding-top:18px; }
 .quality-section h3 { font-size:15px; margin-bottom:12px; }
-@media(max-width:720px) { .app-version { bottom:76px; right:12px; } .quality-grid { grid-template-columns:1fr; } }
+@media(max-width:720px) { .nav .i { min-width: 0; flex: 1; } .nav .i .l { white-space: nowrap; } .app-version { bottom:76px; right:12px; } .quality-grid { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -895,6 +895,7 @@ body { -webkit-font-smoothing:antialiased; }
     <button class="i" type="button" id="qualityBtn" title="连戏与质检"><span class="ic"></span><span class="l">质检</span></button>
     <button class="i" type="button" id="automationBtn" title="镜头与候选"><span class="ic"></span><span class="l">镜头与候选</span></button>
     <button class="i" type="button" id="generationBtn" title="模型生成与单镜返修"><span class="ic"></span><span class="l">单镜返修</span></button>
+    <button class="i" type="button" id="finishingBtn" title="剪映精修"><span class="ic"></span><span class="l">剪映精修</span></button>
     <button class="i" type="button" id="tasksBtn" title="统一任务"><span class="ic"></span><span class="l">任务</span></button>
     <span class="sp"></span>
     <button class="i drawerbtn" type="button" id="drawerBtn" title="打开面板" aria-pressed="false"><span class="ic"></span><span class="l">面板</span></button>
@@ -961,7 +962,7 @@ const ICON = {
   expand: svg('<path d="m6 6 6 6-6 6M13 6l6 6-6 6"/>'), collapse: svg('<path d="m18 6-6 6 6 6M11 6l-6 6 6 6"/>'),
   pen: svg('<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="m12.5 7.5 4 4"/>'), minus: svg('<path d="M5 12h14"/>'), plus: svg('<path d="M12 5v14M5 12h14"/>'), refresh: svg('<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'),
 };
-$$('.nav .i').forEach(b => { const v = b.dataset.view; b.querySelector('.ic').innerHTML = ICON[{ watch: 'film', progress: 'table', library: 'grid' }[v] || { drawerBtn: 'panel', navToggle: 'expand', theme: 'moon', qualityBtn: 'table', tasksBtn: 'table', generationBtn: 'film', automationBtn: 'film' }[b.id]]; });
+$$('.nav .i').forEach(b => { const v = b.dataset.view; b.querySelector('.ic').innerHTML = ICON[{ watch: 'film', progress: 'table', library: 'grid' }[v] || { drawerBtn: 'panel', navToggle: 'expand', theme: 'moon', qualityBtn: 'table', tasksBtn: 'table', generationBtn: 'film', finishingBtn: 'pen', automationBtn: 'film' }[b.id]]; });
 
 const S = { view: 'watch', proj: null, finals: { videos: [], docs: [] }, cur: null, cmp: { mode: 'off', alt: null, offset: 0, audio: 'cur', blinkOn: false }, markers: [], draft: null,
   auxTab: 'marks', fbPath: '反馈/待处理.md', editing: null, segs: null, selSeg: null, lib: null, selLib: null, libCat: '全部', doc: null, docPath: null, lb: null };
@@ -1940,6 +1941,151 @@ $('#generationBtn').addEventListener('click', async () => {
   } catch(e) { jobs.textContent=e.message; }
 });
 
+$('#finishingBtn').addEventListener('click', async () => {
+  const dialog = h('dialog', {class:'review-dialog', 'aria-label':'剪映精修'});
+  const content = h('div');
+  const feedback = h('p', {class:'s t3', role:'status'});
+  const button = (label, onclick, extra={}) => h('button', {class:'pill sm', type:'button', onclick, ...extra}, label);
+  const field = (label, control) => h('label', {}, label, control);
+  let selection = 'current';
+  let busy = false;
+
+  async function act(action, data) {
+    if (busy) return;
+    busy = true;
+    content.inert = true;
+    feedback.textContent = '正在处理…';
+    try {
+      await post('/api/finishing/' + action, data);
+      feedback.textContent = ({create:'草稿已准备',revise:'已保存新修订',publish:'已注册，打开剪映项目列表即可看到',receive:'已回收，请开始技术质检',scan:'技术质检已开始，请稍后刷新',review:'已记录成片复查'})[action];
+      await refresh();
+    } catch (error) {
+      feedback.textContent = error.message;
+      if (action === 'publish') await refresh().catch(() => {});
+    } finally {
+      busy = false;
+      content.inert = false;
+    }
+  }
+
+  async function refresh() {
+    const state = await api('/api/finishing');
+    const source = h('select', {'aria-label':'初剪来源'});
+    const choices = [['current','正在剪的版本'],['draft','已保存的初剪草稿'],['legacy','项目剪辑表'],
+      ...state.finals.map(final=>[final, '初剪成片 · ' + final.split('/').pop()])];
+    for (const [value, label] of choices) source.append(h('option', {value}, label));
+    source.value = choices.some(([value])=>value===selection) ? selection : 'current';
+    const summary = h('div');
+    const preview = async () => {
+      const value = source.value;
+      selection = value;
+      summary.textContent = '正在检查时间线…';
+      const request = value.startsWith('final/') ? {source:'final', final:value} : {source:value};
+      try {
+        const plan = await api('/api/finishing/preview?' + new URLSearchParams(request));
+        if (source.value !== value) return;
+        if (plan.unsupported.length) {
+          summary.replaceChildren(h('p',{class:'s'},'有暂不支持的效果，已停止转换。'), h('ul',{},...plan.unsupported.map(name=>h('li',{},name))));
+          return;
+        }
+        const counts = ['video','audio','text'].map(kind=>plan.clips.filter(c=>c.kind===kind).length);
+        const requestId = crypto.randomUUID().replaceAll('-', '');
+        summary.replaceChildren(
+          h('p',{class:'s t3'}, `${counts[0]} 镜 · ${counts[1]} 条独立音频 · ${counts[2]} 条字幕 · ${fmt(plan.duration_us / plan.timebase)} · ${plan.width}×${plan.height} · ${plan.fps} fps`),
+          button('生成可编辑草稿', ()=>act('create',{...request,signature:plan.signature,request_id:requestId}), {disabled:!state.configured}));
+      } catch (error) {
+        if (source.value === value) summary.textContent = error.message;
+      }
+    };
+    source.onchange = preview;
+    content.replaceChildren(h('section', {class:'task-card'},
+      h('b',{},'从初剪生成草稿'),
+      h('p',{class:'s t3'},state.configured ? '保留切点、音量与可转换轨道。每次修订生成一份新草稿。' : '剪映草稿工具尚未配置。可继续查看已有交接与回收版。'),
+      source,summary));
+    for (const record of state.items) {
+      const parent = state.items.find(item=>item.id===record.parent_id);
+      const status = {prepared:'草稿已准备',published:'已注册到剪映',needs_reconciliation:'待核对'}[record.status];
+      const card = h('section',{class:'task-card'},
+        h('div',{class:'task-heading'},h('b',{},record.name),h('span',{class:'badge'},status)),
+        h('p',{class:'s t3'},parent ? '修订自 ' + parent.name : '来自 Studio 初剪'),
+        h('details',{},h('summary',{},'草稿包位置'), h('p',{class:'s path'},record.package)));
+      if (record.status === 'prepared') {
+        card.append(h('p',{class:'s t3'},'发布前请保存并完全退出剪映。'),
+          button('发布到剪映',()=>act('publish',{id:record.id}),{disabled:!state.configured}));
+      }
+      if (record.status === 'needs_reconciliation') {
+        card.append(h('p',{class:'s'},'请先核对草稿包和剪映项目列表，避免重复注册。'));
+      }
+      if (state.configured && ['prepared','published'].includes(record.status)) {
+        const clips = record.clips.filter(c=>c.kind === 'video' || c.kind === 'audio');
+        const media = h('select',{'aria-label':'要调整的片段'},...clips.map(c=>
+          h('option',{value:c.id},record.snapshot.clips.find(clip=>clip.id===c.id)?.shot || c.id)));
+        const volume = h('input',{type:'number',min:0,max:400,step:1,'aria-label':'音量百分比'});
+        media.onchange = ()=>{volume.value = Math.round((clips.find(c=>c.id===media.value)?.volume ?? 1)*100);};
+        media.onchange();
+        const caption = h('input',{type:'text',maxlength:500,'aria-label':'新增字幕内容'});
+        const start = h('input',{type:'number',min:0,step:.01,value:0});
+        const duration = h('input',{type:'number',min:.01,step:.01,value:2});
+        card.append(h('details',{},h('summary',{},'新建字幕或音量修订'),
+          h('p',{class:'s t3'},'基于 Studio 管理的草稿副本。剪映内的修改保存在其原生项目中。'),
+          h('div',{class:'generation-fields'},field('片段',media),field('音量 %',volume),
+            field('新增字幕（可空）',caption),field('字幕起点（秒）',start),field('字幕时长（秒）',duration)),
+          button('保存为新修订',()=>{
+            const requestId = crypto.randomUUID().replaceAll('-', '');
+            const operations = [];
+            const clip = clips.find(c=>c.id===media.value);
+            if (clip && volume.value !== '' && Number(volume.value) !== Math.round(clip.volume*100)) {
+              operations.push({op:'update',id:clip.id,changes:{volume:Number(volume.value)/100}});
+            }
+            if (caption.value.trim()) operations.push({op:'append',clip:{id:'t'+requestId,kind:'text',track:'字幕',
+              text:caption.value.trim(),start:Number(start.value),duration:Number(duration.value)}});
+            if (!operations.length) {feedback.textContent='请先填写字幕或调整音量。';return;}
+            act('revise',{id:record.id,request_id:requestId,operations});
+          })));
+      }
+      if (record.status === 'published') {
+        const states = {same:'原生草稿文件与发布时一致',changed:'剪映中的草稿文件有变化。请在剪映查看具体修改。',missing:'找不到原生草稿文件，请核对剪映项目列表。'};
+        const input = h('input',{type:'text',class:'review-note','aria-label':'剪映导出的 MP4 或 MOV 路径',placeholder:'粘贴 MP4 或 MOV 的绝对路径'});
+        const confirmed = h('input',{type:'checkbox'});
+        card.append(h('p',{class:'s t3'},states[record.native_state]),
+          h('details',{},h('summary',{},'回收剪映导出的成片'),
+            h('p',{class:'s t3'},'可用目录 · ' + state.import_roots.join(' · ')),
+            input, h('p',{class:'s'},h('label',{},confirmed,' 这是所选剪映草稿实际导出的影片')),
+            button('回收为新成片',()=>act('receive',{id:record.id,source:input.value.trim(),confirm_export:confirmed.checked}))));
+      }
+      for (const film of record.outputs) {
+        const last = film.reviews.at(-1);
+        const report = film.scan;
+        const reviewText = film.stale ? '文件内容已变化' : last ? (last.status==='approved' ? '全片通过' : '退回精修') : '待全片复查';
+        const statusText = report ? ({running:'检查中',completed:'解码通过',failed:'检测失败',interrupted:'检测中断'})[report.status] : '待技术质检';
+        const section = h('section',{class:'quality-section'},
+          h('h3',{},film.source_name + ' · ' + reviewText),
+          h('p',{class:'s t3'},`${film.metadata.width}×${film.metadata.height} · ${fmt(film.metadata.duration)} · ${statusText} · 按全片时间码复查`),
+          h('a',{href:fileUrl(film.final),target:'_blank',rel:'noopener',class:'pill sm'},'播放回收版'));
+        if (report?.events.length) section.append(h('ul',{class:'s'},...report.events.map(e=>h('li',{},e.type+' · '+fmt(e.t)))));
+        if (report?.error) section.append(h('p',{class:'s'},report.error));
+        if (!film.stale && report?.status !== 'running') section.append(button('技术质检',()=>act('scan',{final:film.final})));
+        if (!film.stale && report?.status === 'completed') {
+          const note = h('textarea',{class:'review-note',rows:2,placeholder:'看完后记录画面、字幕、声音或需返修的时间码','aria-label':'全片复查结论'});
+          const decision = status=>act('review',{final:film.final,film_hash:film.film_hash,scan_id:report.id,status,note:note.value});
+          section.append(note,h('div',{class:'review-actions'},button('全片通过',()=>decision('approved')),button('退回精修',()=>decision('rejected'))));
+        }
+        if (last) section.append(h('p',{class:'s'},last.note));
+        card.append(section);
+      }
+      content.append(card);
+    }
+    await preview();
+  }
+  dialog.append(h('div',{class:'review-actions'},h('b',{},'剪映精修'),
+    button('刷新状态',async()=>{try {await refresh();}catch(error){feedback.textContent=error.message;}}),
+    button('关闭',()=>dialog.close())),feedback,content);
+  dialog.addEventListener('close',()=>dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  try {await refresh();} catch(error) {feedback.textContent=error.message;}
+});
+
 $('#tasksBtn').addEventListener('click', async () => {
   const dialog = h('dialog',{class:'review-dialog','aria-label':'统一任务'});
   const body = h('div');
@@ -2238,6 +2384,7 @@ function tlRenderHead() {
   }
   hd.append(h('button', { class: 'pill sm', type: 'button', onclick: openEditor }, '初剪编辑'), h('button', { class: 'pill sm', onclick: openIssues }, '返修问题'));
   hd.append(h('span', { class: 'sp' }));
+  if (d?.external) hd.append(h('span', { class: 'xs t3' }, d.reason));
   if (has) {
     if (S.cur && !S.cur.current && !d.exported) hd.append(h('span', { class: 'badge warn', title: '剪辑表只有一份，对应最新的成片' }, '时间线是当前剪辑表的，不是这一版'));
     hd.append(h('span', { class: 'xs t3' }, `${d.V.length} 镜 · ${d.A.length} 条声音`), h('button', { class: 'icon-btn', type: 'button', title: '重新读剪辑表', 'aria-label': '刷新时间线', onclick: tlReload, html: ICON.refresh }));

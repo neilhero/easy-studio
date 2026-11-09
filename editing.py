@@ -312,8 +312,9 @@ def issues(app, body=None):
             t = float(body.get('t', 0))
             if not note or not math.isfinite(t) or t < 0:
                 raise ValueError('请填写问题和有效时间码')
+            import finishing
             exported = manifest(app, final)
-            tl = exported['timeline'] if exported else app.api_timeline()
+            tl = finishing.UNMAPPED if finishing.returned(final) else exported['timeline'] if exported else app.api_timeline()
             clip = next((c for c in tl.get('V', []) if c['start'] <= t < c['start'] + c['dur']), None)
             state['items'].append({'id': uuid.uuid4().hex, 'note': note, 'final': final, 'film_hash': app.file_hash(app.safe(final)),
                                    't': t, 'clip': clip, 'frame': body.get('frame', ''), 'status': 'pending',

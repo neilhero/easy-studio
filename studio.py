@@ -11,7 +11,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from common import ffprobe
 import common as C
+import math
 import editing
+import finishing
 import upscaling
 import quality
 import agent_api
@@ -150,6 +152,11 @@ def api_finals():
             match = re.fullmatch(r"初剪_v(\d+)\.mp4", v["name"])
             if match:
                 v.update(version="初剪 v" + match.group(1), order=2 * 10 ** 6 + int(match.group(1)))
+            receipt_path = safe(v["path"] + ".finishing.json") if finishing.returned(v["path"]) else None
+            if receipt_path and receipt_path.is_file():
+                item = finishing.receipt(sys.modules[__name__], v["path"])
+                version = "精修 · " + v["name"].split("_")[2][:6]
+                v.update(name=item["source_name"], version=version, order=int(datetime.datetime.fromisoformat(item["at"]).timestamp()))
         vids.sort(key=lambda v: (-v["order"], v["name"]))
     return {"videos": vids, "docs": docs}
 
@@ -360,7 +367,8 @@ def review_context(sid, final_path):
         raise ValueError("请选择实际存在的成片")
     film, _ = finals[final_path]
     exported = editing.manifest(sys.modules[__name__], final_path)
-    timeline = exported["timeline"] if exported else api_timeline()
+    external = finishing.returned(final_path)
+    timeline = finishing.UNMAPPED if external else exported["timeline"] if exported else api_timeline()
     clips = timeline.get("V", [])
     entry = row["review_entry"]
     # 只接受明确的段号/节拍名称或已选素材匹配，不靠列表下标猜镜头。
@@ -373,7 +381,7 @@ def review_context(sid, final_path):
     # 每个成片都要显式确认剪辑表对应关系；旧版也不能借用当前表直接批准。
     result = {"segment": sid, "final": final_path, "clip": clip, "confirmed": confirmed,
               "film_hash": file_hash(film), "status": "待审", "neighbors": [],
-              "reason": "" if clip else "剪辑表不能唯一匹配这一段，请核对镜头ID或节拍名称"}
+              "reason": finishing.UNMAPPED["reason"] if external else "" if clip else "剪辑表不能唯一匹配这一段，请核对镜头ID或节拍名称"}
     if clip:
         idx = clip["i"]
         window = clips[max(0, idx - 1):idx + 2]
@@ -536,23 +544,32 @@ def load_edl():
         return m
 
 
-def api_timeline():
+def api_timeline(precise=False):
     m = load_edl()
     if m is None:
         return {"found": False, "path": EDL, "mtime": None}
     V, A, SUBS = list(getattr(m, "V", [])), list(getattr(m, "A", [])), list(getattr(m, "SUBS", []))
+    def clock(value):
+        return value if precise else round(value, 3)
+
     starts, t, vitems = [], 0.0, []
     for i, it in enumerate(V):
         src = str(it.get("src", ""))
-        d = float(it.get("out", 0)) - float(it.get("in", 0)) + float(it.get("freeze", 0) or 0)
+        span = float(it.get("out", 0)) - float(it.get("in", 0))
+        speed = float(it.get("speed", 1)) if precise else 1
+        if precise and (not math.isfinite(speed) or speed <= 0):
+            raise ValueError("项目剪辑表含无效速度")
+        d = span / speed + float(it.get("freeze", 0) or 0)
         k = ("black" if src == "BLACK" else "white" if src == "WHITE" else "title" if src.startswith(("TITLE:", "CARD:"))
              else "image" if src.lower().endswith((".png", ".jpg", ".jpeg")) else "live")
         p = (ROOT / src) if k in ("live", "image") else None
         starts.append(t)
         vitems.append({"i": i, "id": it.get("id") or (("品牌卡" if src.startswith("CARD:") else src.split(":", 1)[1].split("|")[0]) if k == "title" else os.path.basename(src)), "src": src, "kind": k,
-                       "start": round(t, 3), "dur": round(d, 3), "in": it.get("in"), "out": it.get("out"), "grade": it.get("grade"),
+                       "start": clock(t), "dur": clock(d), "in": it.get("in"), "out": it.get("out"), "grade": it.get("grade"),
                        "matte": it.get("matte", True), "a": it.get("a", 1.0), "fi": it.get("fi"), "fo": it.get("fo"), "freeze": it.get("freeze"),
                        "exists": bool(p and p.is_file())})
+        if precise:
+            vitems[-1].update(speed=speed, transition=it.get("transition") or it.get("transition_out"))
         t += d
     total = t
 
@@ -571,7 +588,7 @@ def api_timeline():
         if d is None:
             d = max(0.5, (probe(p).get("duration", 0) or 0) - float(ev.get("in", 0) or 0)) if ex else 3.0
         d = min(float(d), max(0.0, total - s)) if total else float(d)
-        aitems.append({"i": j, "src": src, "name": os.path.basename(src), "kind": k, "start": round(s, 3), "dur": round(d, 3),
+        aitems.append({"i": j, "src": src, "name": os.path.basename(src), "kind": k, "start": clock(s), "dur": clock(d),
                        "gain": ev.get("gain", 0), "loop": bool(ev.get("loop")), "fi": ev.get("fi"), "fo": ev.get("fo"), "duck": bool(ev.get("duck")),
                        "norm": ev.get("norm"), "in": ev.get("in", 0), "fx": ev.get("fx"), "raw": bool(ev.get("raw")), "clarity": bool(ev.get("clarity")),
                        "hits": [round(s + float(x[0]), 3) for x in (ev.get("hits") or [])],
@@ -580,7 +597,7 @@ def api_timeline():
     for sb in SUBS:
         try:
             if sb[0] == "V":
-                subs.append({"start": round(starts[sb[1]] + sb[2], 3), "end": round(starts[sb[1]] + sb[3], 3), "text": sb[4]})
+                subs.append({"start": clock(starts[sb[1]] + sb[2]), "end": clock(starts[sb[1]] + sb[3]), "text": sb[4]})
             else:
                 subs.append({"start": float(sb[0]), "end": float(sb[1]), "text": sb[2]})
         except Exception:
@@ -593,7 +610,7 @@ def api_timeline():
         except Exception:
             sync = None
     return {"found": True, "path": EDL, "mtime": _mt(EDL), "look": getattr(m, "LOOK", "none"), "target_i": getattr(m, "TARGET_I", None),
-            "duck_db": getattr(m, "DUCK_DB", None), "total": round(total, 3), "sync": sync, "V": vitems, "A": aitems, "subs": subs}
+            "duck_db": getattr(m, "DUCK_DB", None), "total": clock(total), **({"invalid_subs": len(SUBS) - len(subs)} if precise else {}), "sync": sync, "V": vitems, "A": aitems, "subs": subs}
 
 
 def fb_lines():
@@ -842,6 +859,10 @@ class H(BaseHTTPRequestHandler):
                 return self._json(agent_api.project(sys.modules[__name__]))
             if path == "/api/tasks":
                 return self._json(agent_api.dispatch(sys.modules[__name__], {"operation":"tasks.list","arguments":{"limit":200}})["result"])
+            if path == "/api/finishing":
+                return self._json(finishing.listing(sys.modules[__name__]))
+            if path == "/api/finishing/preview":
+                return self._json(finishing.preview(sys.modules[__name__], {k: v[0] for k, v in q.items()}))
             if path == "/api/generation":
                 return self._json({"items":generation.jobs(sys.modules[__name__]),"providers":generation.capabilities()})
             if path == "/api/workspace":
@@ -878,6 +899,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(api_feedback_get())
             if path == "/api/timeline":
                 final = q.get("final", [""])[0]
+                if finishing.returned(final):
+                    return self._json(finishing.UNMAPPED)
                 exported = editing.manifest(sys.modules[__name__], final) if final else None
                 return self._json({**exported["timeline"], "exported": True, "mtime": _mt(EDL)} if exported else api_timeline())
             if path == "/api/stat":
@@ -924,6 +947,10 @@ class H(BaseHTTPRequestHandler):
             return
         u = urllib.parse.urlsplit(self.path)
         try:
+            if u.path.startswith("/api/finishing/"):
+                action = finishing.ACTIONS.get(u.path.rsplit("/", 1)[-1])
+                if action:
+                    return self._json(action(sys.modules[__name__], self._body()))
             if u.path == "/api/generation":
                 return self._json(generation.submit(sys.modules[__name__],self._body()))
             if u.path == "/api/generation/retry":
