@@ -48,7 +48,7 @@ def jobs(app):
     return sorted([get(app,x.parent.name) for x in p.glob('*/run.json') if re.fullmatch(r'[a-f0-9]{32}',x.parent.name)],key=lambda j:j['updated'],reverse=True) if p.exists() else []
 
 
-def snapshot(app,ids,expected):
+def snapshot(app,ids,expected,paths=None):
     rows={r['id']:r for r in app.api_segments().get('rows',[])};data=quality.read(app);shots=[]
     for sid in ids:
         if sid not in rows:raise ValueError('镜头不存在：'+sid)
@@ -59,6 +59,10 @@ def snapshot(app,ids,expected):
             if not v or app.file_hash(app.safe(v['image']))!=v['fingerprint']:raise ValueError('参考图片缺失或变化，请先复核')
             refs.append(v)
         candidates=[{'path':c['path'],'fingerprint':app.file_hash(app.candidate_file(c['path']))} for c in row['files']['candidates']]
+        if paths is not None:
+            chosen = paths.get(sid, [])
+            candidates = [c for c in candidates if c['path'] in chosen]
+            if {c['path'] for c in candidates} != set(chosen):raise ValueError(sid+'指定候选已变化')
         if not candidates:raise ValueError(sid+'尚未关联候选')
         shots.append({'id':sid,'scene':row['scene'],'text':row['text'],'target_duration':row['dur'],
                       'requirements':record.get('requirements',''),'references':refs,'expected_dialogue':expected.get(sid,''),'candidates':candidates})
@@ -71,15 +75,17 @@ def fresh(app,job):
         _,_,signature=workspace.inspection(app,job.get('source_request',job['source_kind']),job.get('source_final'),job['expected_dialogue'])
         if signature!=job['input_signature']:raise ValueError('剪辑已修改，请检查新版；旧报告和旧成片已保留')
         return
-    _,signature=snapshot(app,[s['id'] for s in job['shots']],job['expected_dialogue'])
+    _,signature=snapshot(app,[s['id'] for s in job['shots']],job['expected_dialogue'],job.get('candidate_paths'))
     if signature!=job['input_signature']:raise ValueError('镜头要求、参考或候选已变化，请创建新运行；旧证据和结果保留')
 
 
-def start(app,body):
+def start(app,body,*,request_id=None,owner=None,candidate_paths=None,review_only=False):
     with LOCK:
+        if request_id and app.safe(f'{BASE}/{request_id}/run.json').is_file():
+            return get(app,request_id)
         if ACTIVE:raise ValueError('已有自动审片流程运行中')
         mode=body.get('mode','inspect')
-        if mode=='inspect':return start_inspection(app,body)
+        if mode=='inspect':return start_inspection(app,body,request_id=request_id,owner=owner)
         if mode!='rebuild':raise ValueError('请选择检查当前剪辑或从候选重新初剪')
         ids=body['segments'] if 'segments' in body else [r['id'] for r in app.api_segments().get('rows',[])]
         if not isinstance(ids,list) or not 1<=len(ids)<=20 or not all(isinstance(x,str) for x in ids) or len(set(ids))!=len(ids):raise ValueError('首版每次选择1—20个不重复镜头')
@@ -87,12 +93,19 @@ def start(app,body):
         if not isinstance(expected,dict) or any(k not in ids or not isinstance(v,str) or len(v)>4000 for k,v in expected.items()):raise ValueError('expected_dialogue须为段号到台词的映射')
         threshold=body.get('confidence',.8)
         if type(threshold) not in (int,float) or not math.isfinite(threshold) or not .5<=threshold<=1:raise ValueError('置信阈值范围0.5—1')
-        shots,signature=snapshot(app,ids,expected)
+        shots,signature=snapshot(app,ids,expected,candidate_paths)
         if sum(len(s['candidates']) for s in shots)>100:raise ValueError('首版单次候选总数上限100')
-        token=uuid.uuid4().hex
+        token=request_id or uuid.uuid4().hex
         job={'id':token,'mode':'rebuild','status':'running','stage':'准备证据','phase':'prepare','shots':shots,'input_signature':signature,
              'expected_dialogue':expected,'threshold':threshold,'packets':[],'selection':[],'findings':[],'final':None,
              'draft_revision':editing.read(app)['revision'],'export_id':None,'error':'','updated':now(),'started':now(),'content_status':'待审'}
+        if owner:
+            job.update(owner=owner,review_only=review_only,candidate_paths=candidate_paths,profile=profile_key(app))
+            baseline=next((j for j in jobs(app) if j.get('owner')==owner and j['mode']=='rebuild'
+                           and j.get('profile')==job['profile'] and j['threshold']==threshold
+                           and j.get('review_only')==review_only and j.get('candidate_paths')==candidate_paths
+                           and j['status'] in ('completed','needs_decision')),None)
+            job['baseline_id']=baseline['id'] if baseline else None
         save(app,job);launch(app,job)
         return job
 
@@ -109,7 +122,12 @@ def resume(app,identity):
         if job['status']=='completed':return job
         if job['id'] in ACTIVE:raise ValueError('运行尚未停止')
         fresh(app,job)
-        if job['phase']=='dispatching':raise ValueError('导出受理处于未知窗口，请先核对现有导出及草稿，不自动重提')
+        if job['phase']=='dispatching' and not job.get('owner'):raise ValueError('导出受理处于未知窗口，请先核对现有导出及草稿，不自动重提')
+        if job.get('owner') and job['phase'] in ('export','inspect_export') and job['status'] in ('failed','interrupted','cancelled'):
+            old=next((x for x in editing.jobs(app) if x['id']==job['export_id']),None)
+            if old and old['status'] in ('failed','cancelled'):
+                job['export_attempt']=job.get('export_attempt',0)+1
+                job['phase']='dispatching'
         job.update(status='running',error='');save(app,job);launch(app,job);return job
 
 
@@ -180,11 +198,33 @@ def review_or_wait(app,job,event):
     return True
 
 
+def profile_key(app):
+    return workspace.digest({'renderer':app.file_hash(pathlib.Path(editing.__file__)),
+                             'evidence':app.file_hash(pathlib.Path(evidence.__file__))})
+
+
+def export_snapshot(app,job,clips,phase):
+    job['phase']='dispatching';save(app,job)
+    state={'revision':job['draft_revision'],'clips':clips}
+    if job.get('owner'):
+        state.update(request_id=uuid.uuid5(uuid.UUID(job['id']),f"export:{job.get('export_attempt',0)}").hex,
+                     cache_segments=True)
+    result=editing.start(app,{},snapshot=state)
+    job.update(export_id=result['id'],phase=phase,stage='初剪导出');save(app,job)
+
+
+def prior_packet(app,baseline,key):
+    if baseline and key:
+        return next((p for p in baseline['packets'] if workspace.reusable(app,p,key)),None)
+    return None
+
+
 def work(app,job,event):
     try:
         fresh(app,job)
         if job.get('mode')=='inspect':
             work_inspection(app,job,event);return
+        baseline=get(app,job['baseline_id']) if job.get('baseline_id') else None
         if job['phase']=='prepare':
             for s in job['shots']:
                 for c in s['candidates']:
@@ -193,8 +233,12 @@ def work(app,job,event):
                     info=app.probe(app.candidate_file(c['path']))
                     if not 0<info.get('duration',0)<=60:raise ValueError('首版候选须在60秒内且可解码')
                     job['stage']='证据与技术检查：'+s['id'];save(app,job)
-                    p=evidence.make(app,job['id'],c['path'],0,info['duration'],'candidate',s,s['expected_dialogue'],event)
-                    p.update(segment=s['id'],candidate_key=key);job['packets'].append(p);save(app,job)
+                    logical=workspace.digest({'candidate':c,'shot':{k:v for k,v in s.items() if k!='candidates'},
+                                              'profile':job.get('profile')}) if job.get('owner') else None
+                    previous=prior_packet(app,baseline,logical)
+                    p=workspace.copy_review(previous,baseline['id']) if previous else evidence.make(
+                        app,job['id'],c['path'],0,info['duration'],'candidate',s,s['expected_dialogue'],event)
+                    p.update(segment=s['id'],candidate_key=key,logical_key=logical);job['packets'].append(p);save(app,job)
             job['phase']='candidates';save(app,job)
         if job['phase']=='candidates':
             if not review_or_wait(app,job,event):return
@@ -209,15 +253,17 @@ def work(app,job,event):
                                 'packet_id':chosen['id'],'reason':chosen['review']['reason'],'source_hash':chosen['source_hash']})
             if sum(c['out']-c['in'] for c in choices)>300:raise ValueError('首版自动初剪最长300秒')
             job['selection']=choices
+            if job.get('review_only'):
+                job.update(status='completed',stage='候选审查完成',content_status='已检查')
+                save(app,job);return
+        if job['phase'] in ('candidates','dispatching'):
             # 与网页/智能体修改同锁，草稿变化时不覆盖用户编辑。
             import agent_api
             with agent_api.LOCK:
                 fresh(app,job)
                 if editing.read(app)['revision']!=job['draft_revision']:raise ValueError('草稿已被其他操作修改，请新建运行，避免覆盖编辑')
-                job['phase']='dispatching';save(app,job)
-                clips=editing.validate(app,[{k:c[k] for k in ('id','src','in','out','a')} for c in choices])
-                export=editing.start(app,{},snapshot={'revision':job['draft_revision'],'clips':clips})
-                job.update(export_id=export['id'],phase='export',stage='初剪导出');save(app,job)
+                clips=editing.validate(app,[{k:c[k] for k in ('id','src','in','out','a')} for c in job['selection']])
+                export_snapshot(app,job,clips,'export')
         if job['phase']=='export':
             while job['export_id'] in editing.ACTIVE:
                 if event.wait(.1):
@@ -232,13 +278,22 @@ def work(app,job,event):
             tl=manifest['timeline'];duration=app.probe(app.safe(job['final']))['duration']
             ranges=[('final',0,duration,{'scope':'完整初剪，需核对节奏、声音、故事与动作覆盖','shots':job['shots'],'selection':job['selection']})]
             for i in range(1,len(tl['V'])):
-                cut=tl['V'][i]['start'];ranges.append(('seam',max(0,cut-1),min(duration,cut+1),{'left':tl['V'][i-1],'right':tl['V'][i],'left_shot':job['shots'][i-1],'right_shot':job['shots'][i]}))
+                cut=tl['V'][i]['start'];ranges.append(('seam',max(tl['V'][i-1]['start'],cut-1),min(duration,cut+min(1,tl['V'][i]['dur'])),{'left':tl['V'][i-1],'right':tl['V'][i],'left_shot':job['shots'][i-1],'right_shot':job['shots'][i]}))
             for i,(kind,start,end,requirement) in enumerate(ranges):
                 if any(p.get('post_index')==i for p in job['packets']):continue
                 job['stage']='接缝与全片证据';save(app,job)
                 expected=' '.join(s['expected_dialogue'] for s in job['shots'] if s['expected_dialogue']) if kind=='final' else ''
-                p=evidence.make(app,job['id'],job['final'],start,end,kind,requirement,expected,event)
-                p['post_index']=i;job['packets'].append(p);save(app,job)
+                key=None
+                if kind=='seam' and job.get('owner'):
+                    key=workspace.digest({'seam':[{k:v for k,v in c.items() if k not in ('packet_id','reason')} for c in job['selection'][i-1:i+1]],
+                                          'shots':[{k:v for k,v in s.items() if k!='candidates'} for s in job['shots'][i-1:i+1]],
+                                          'canvas':[app.probe(app.safe(job['final']))[k] for k in ('width','height')],
+                                          'profile':job['profile']})
+                previous=prior_packet(app,baseline,key)
+                p=workspace.copy_review(previous,baseline['id']) if previous else evidence.make(
+                    app,job['id'],job['final'],start,end,kind,requirement,expected,event)
+                if previous:p['current_range']=[start,end]
+                p.update(post_index=i,logical_key=key);job['packets'].append(p);save(app,job)
             job['phase']='final_review';save(app,job)
         if job['phase']=='final_review':
             if not review_or_wait(app,job,event):return
@@ -294,7 +349,7 @@ def reopen(app,body):
         return job
 
 
-def start_inspection(app,body):
+def start_inspection(app,body,*,request_id=None,owner=None):
     expected=body.get('expected_dialogue',{})
     if not isinstance(expected,dict) or any(not isinstance(v,str) or len(v)>4000 for v in expected.values()):raise ValueError('台词要求须为镜号到文字的对应表')
     plan,entries,signature=workspace.inspection(app,body.get('source','current'),body.get('final'),expected)
@@ -304,15 +359,21 @@ def start_inspection(app,body):
     if not isinstance(force,list) or any(x not in {e['segment'] for e in entries} for x in force):raise ValueError('勾选的镜头不在当前剪辑中')
     threshold=body.get('confidence',.8)
     if type(threshold) not in (int,float) or not math.isfinite(threshold) or not .5<=threshold<=1:raise ValueError('置信门槛须为0.5—1')
-    profile=workspace.digest({'renderer':app.file_hash(pathlib.Path(editing.__file__)),'evidence':app.file_hash(pathlib.Path(evidence.__file__))})
-    baseline=next((j for j in jobs(app) if j.get('mode')=='inspect' and j.get('profile')==profile and j['status']=='completed' and j.get('source_kind')==plan['kind'] and j.get('source_request')==body.get('source','current') and j.get('source_final')==plan['film'] and j.get('final') and app.file_hash(app.safe(j['final']))==j.get('final_hash') and j['threshold']==threshold),None)
-    if baseline and baseline['input_signature']==signature and not force and all(workspace.reusable(app,p,p.get('logical_key')) for p in baseline['packets']):return {**baseline,'reused_run':True}
-    token=uuid.uuid4().hex
+    profile=profile_key(app)
+    baseline=next((j for j in jobs(app) if j.get('mode')=='inspect' and (not owner or j.get('owner')==owner) and j.get('profile')==profile and (j['status']=='completed' or owner and j['status']=='needs_decision') and (j.get('source_kind')==plan['kind'] or owner and not plan['film']) and j.get('source_request')==body.get('source','current') and j.get('source_final')==plan['film'] and j.get('final') and app.file_hash(app.safe(j['final']))==j.get('final_hash') and j['threshold']==threshold),None)
+    if (baseline and baseline['status']=='completed' and baseline['input_signature']==signature and not force
+            and all(workspace.reusable(app,p,p.get('logical_key')) for p in baseline['packets'])):
+        if not request_id:return {**baseline,'reused_run':True}
+        replay={**baseline,'id':request_id,'reused_run':True,'baseline_id':baseline['id'],'started':now(),
+                'packets':[workspace.copy_review(p,baseline['id']) for p in baseline['packets']]}
+        save(app,replay);return replay
+    token=request_id or uuid.uuid4().hex
     job={'id':token,'mode':'inspect','status':'running','phase':'inspect_prepare','stage':'检查当前剪辑',
          'shots':[e['metadata'] for e in entries],'entries':entries,'plan':plan,'source_kind':plan['kind'],'source_request':body.get('source','current'),'source_final':plan['film'],
          'input_signature':signature,'expected_dialogue':expected,'threshold':threshold,'packets':[],'selection':[],
          'findings':[],'final':None,'profile':profile,'draft_revision':plan['draft_revision'],'export_id':None,'error':'','updated':now(),
          'started':now(),'content_status':'待检查','baseline_id':baseline['id'] if baseline else None,'force_segments':force}
+    if owner:job['owner']=owner
     if baseline and baseline['plan']['signature']==plan['signature']:
         job.update(final=baseline['final'],final_hash=baseline['final_hash'])
     save(app,job);launch(app,job);return job
@@ -320,7 +381,7 @@ def start_inspection(app,body):
 
 def work_inspection(app,job,event):
     fresh(app,job)
-    if job['phase']=='inspect_prepare':
+    if job['phase'] in ('inspect_prepare','dispatching'):
         import agent_api
         with agent_api.LOCK:
             fresh(app,job)
@@ -329,10 +390,8 @@ def work_inspection(app,job,event):
             elif job.get('final'):
                 job['phase']='inspect_packets'
             else:
-                job['phase']='dispatching';save(app,job)
                 clips=editing.validate(app,job['plan']['clips'])
-                exported=editing.start(app,{},snapshot={'revision':job['draft_revision'],'clips':clips})
-                job.update(export_id=exported['id'],phase='inspect_export',stage='生成检查预览（草稿保留）')
+                export_snapshot(app,job,clips,'inspect_export')
             save(app,job)
     if job['phase']=='inspect_export':
         while job['export_id'] in editing.ACTIVE:

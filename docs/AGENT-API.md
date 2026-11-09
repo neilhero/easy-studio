@@ -1,8 +1,8 @@
-# Lazy Studio v0.6：本机智能体接口 v1
+# Lazy Studio 本机智能体接口 v1
 
 ## 范围与运行
 
-本版提供本机 MCP stdio 代理和服务内业务入口，复用网页已有的素材评审、连戏资料、质检、超分和初剪代码。不是远程公开MCP服务；不包含付费生成、本地视频模型或剪映精修适配。
+本机 MCP stdio 代理和网页共用素材评审、质检、初剪、生成返修、剪映精修和整集制作功能。外部提供方由连接的宿主按项目和预算授权执行。
 
 先启动一个Studio服务，明确允许导入的媒体目录：
 
@@ -36,6 +36,30 @@ python3 run.py --root '/项目目录' --port 8790 --import-root '/允许导入�
 支持MCP `2025-11-25`、`2025-06-18` stdio生命周期（initialize、notifications、tools/list、tools/call、ping），每行一个JSON-RPC消息，stdout只输出协议消息。明确不宣称支持2026版无状态协议。代理只连接127.0.0.1/localhost的HTTP根地址，不使用系统代理转发令牌。
 
 协议参考：[MCP 2025-11-25生命周期](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2025-11-25/basic/lifecycle.mdx)、[工具规范](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2025-11-25/server/tools.mdx)。
+
+## 整集制作（v1.0）
+
+先获取 `studio_project` 的写入身份和修订号，再提交一次 `episode.start`。下面只展示该操作的 `arguments`。
+
+```json
+{
+  "authorize": true,
+  "template": "episode",
+  "segments": ["S1", "S2", "S3"],
+  "source": "current",
+  "deliver": "rough",
+  "acceptance": "director",
+  "max_credits": 0,
+  "max_attempts": 2
+}
+```
+
+- `template` 还支持 `review`（只审候选）、`rough`（候选到初剪）、`repair`（指定一项返修）。`source=auto` 优先已有时间线，`source=candidates` 按指定镜号重新选片。
+- 每个 `repairs` 项需给出 `segment/provider/issue/preserve`。本机用 `rife`。LibTV 另须提供 `libtv_project/model/prompt/quoted_credits`，参考、参数和水印沿用 `generation.submit` 的约定。每次重试使用已授权单次报价，累计受整集上限及每镜尝试次数约束。若需要将候选初剪写入工作草稿后返修，初始授权中须给 `adopt_rough=true`。
+- `episode.get` 返回子任务。审查使用 `automation.claim/packet/submit`，应根据实际连续画面和声音记录检查范围。LibTV 使用 `generation.claim/record`；未知受理用 `recover=true` 查询同一请求。网页和 MCP 会显示等待原因。
+- `episode.pause` 暂停新派发。重启后 `episode.resume` 认回已提交子任务。明确修改输入后用 `refresh=true` 开新一轮。新返修需要 `authorize_repairs=true` 与 `repairs`，仍受原授权预算与尝试次数限制。
+- `deliver=jianying` 会生成可编辑草稿，并等待剪映原生导出、Studio 回收及全片复查。若有多份通过的回收版，使用 `episode.decide` 选定。Studio 初剪默认也需提交 `episode.decide`；用户明确授权按完整审查规则交付时才使用 `acceptance=reviewed`。
+- `episode.report` 支持按 `id` 和 `cycle` 读交付报告。报告记录实际内容指纹、审查依据、已知费用和未知预留；技术成功与内容判断分别记载。
 
 ## 两个工具
 

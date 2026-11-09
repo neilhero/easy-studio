@@ -14,6 +14,7 @@ import common as C
 import math
 import editing
 import finishing
+import episode
 import upscaling
 import quality
 import agent_api
@@ -859,6 +860,12 @@ class H(BaseHTTPRequestHandler):
                 return self._json(agent_api.project(sys.modules[__name__]))
             if path == "/api/tasks":
                 return self._json(agent_api.dispatch(sys.modules[__name__], {"operation":"tasks.list","arguments":{"limit":200}})["result"])
+            if path == "/api/episode":
+                return self._json(episode.listing(sys.modules[__name__]))
+            if path == "/api/episode/report":
+                app = sys.modules[__name__]
+                run = episode.load(app, q.get("id", [""])[0])
+                return self._json(episode.report(app, run, int(q["cycle"][0]) if "cycle" in q else None))
             if path == "/api/finishing":
                 return self._json(finishing.listing(sys.modules[__name__]))
             if path == "/api/finishing/preview":
@@ -947,6 +954,10 @@ class H(BaseHTTPRequestHandler):
             return
         u = urllib.parse.urlsplit(self.path)
         try:
+            if u.path.startswith("/api/episode/"):
+                action = episode.ACTIONS.get(u.path.rsplit("/", 1)[-1])
+                if action:
+                    return self._json(action(sys.modules[__name__], self._body()))
             if u.path.startswith("/api/finishing/"):
                 action = finishing.ACTIONS.get(u.path.rsplit("/", 1)[-1])
                 if action:

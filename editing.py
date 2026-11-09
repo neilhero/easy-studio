@@ -1,6 +1,8 @@
 """v0.3 单人剪辑草稿、不可变导出快照和本地任务。"""
 import copy
 import datetime
+import hashlib
+import re
 import json
 import math
 import os
@@ -149,16 +151,29 @@ def jobs(app):
         for p in sorted(directory.glob('*.json'), reverse=True):
             job = json.loads(p.read_text())
             if job['status'] in ('queued', 'running') and job['id'] not in ACTIVE:
-                job.update(status='failed', error='服务已重启，导出中断；可重新导出，旧成片保留')
+                saved = manifest(app, job['final']) if job.get('final') and app.file_hash(app.safe(job['final'])) else None
+                if saved and saved['job'] == job['id']:
+                    job.update(status='completed', error='')
+                else:
+                    job.update(status='failed', error='服务已重启，导出中断；可重新导出，旧成片保留')
             result.append(job)
     return result
 
 
 def start(app, body, *, snapshot=None):
     with LOCK:
+        state = snapshot if snapshot is not None else read(app)
+        token = state.get('request_id') if snapshot is not None else None
+        if token:
+            if not re.fullmatch('[a-f0-9]{32}', token):
+                raise ValueError('导出编号无效')
+            old = next((j for j in jobs(app) if j['id'] == token), None)
+            if old:
+                if any(old.get(k) != state.get(k) for k in ('clips', 'revision', 'canvas')):
+                    raise ValueError('导出请求编号已绑定其他快照')
+                return old
         if ACTIVE:
             raise ValueError('已有导出任务正在运行')
-        state = snapshot if snapshot is not None else read(app)
         retry = body.get('retry')
         if retry:
             old = next((j for j in jobs(app) if j['id'] == retry), None)
@@ -175,7 +190,7 @@ def start(app, body, *, snapshot=None):
         executable = os.environ.get('FFMPEG_BIN') or shutil.which('ffmpeg')
         if not executable:
             raise ValueError('未找到 FFmpeg，请配置 FFMPEG_BIN 后重启服务')
-        token = datetime.datetime.now().strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8]
+        token = token or datetime.datetime.now().strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8]
         final_dir = app.safe('final')
         if not final_dir:
             raise PermissionError('成片路径越界')
@@ -185,7 +200,7 @@ def start(app, body, *, snapshot=None):
         output = f'final/初剪_v{max(existing, default=0)+1:03d}.mp4'
         job = {'id': token, 'status': 'queued', 'completed': 0, 'total': len(clips), 'final': output,
                'revision': state['revision'], 'clips': clips, 'error': '', 'retry_of': retry}
-        for key in ('canvas', 'repair_job'):
+        for key in ('canvas', 'repair_job', 'cache_segments'):
             if key in state:
                 job[key] = state[key]
         write(app, f'剪辑/导出任务/{token}.json', job)
@@ -246,10 +261,35 @@ def render(app, executable, job):
             first = app.probe(app.safe(job['clips'][0]['src']))
             width, height = job.get('canvas', (first['width'], first['height']))
             w, h = int(width) // 2 * 2, int(height) // 2 * 2
+            cache = None
+            if job.get('cache_segments'):
+                cache = app.safe('剪辑/编码缓存')
+                if not cache:
+                    raise PermissionError('编码缓存路径越界')
+                cache.mkdir(exist_ok=True)
+                recipe = [w, h, app.file_hash(pathlib.Path(__file__)), app.file_hash(pathlib.Path(executable).resolve())]
+                job.update(encoded_segments=[], reused_segments=[])
             for i, c in enumerate(job['clips']):
                 source = app.safe(c['src'])
                 if app.file_hash(source) != c['fingerprint']:
                     raise ValueError('源素材已变化，导出已停止')
+                target = folder / f'{i}.mp4'
+                if cache:
+                    check_cancel()
+                    key = hashlib.sha256(json.dumps([recipe, c['fingerprint'], c['in'], c['out'], c['a']]).encode()).hexdigest()
+                    cached = app.safe(f'剪辑/编码缓存/{key}.mp4')
+                    fingerprint = app.safe(f'剪辑/编码缓存/{key}.json')
+                    if not cached or not fingerprint:
+                        raise PermissionError('编码缓存路径越界')
+                    actual = app.file_hash(cached)
+                    if actual and fingerprint.is_file() and actual == json.loads(fingerprint.read_text()):
+                        shutil.copyfile(cached, target)
+                        if app.file_hash(target) != actual:
+                            raise ValueError('复用期间缓存内容变化')
+                        job['reused_segments'].append(c['id'])
+                        job['completed'] = i + 1
+                        write(app, path, job)
+                        continue
                 d = c['out'] - c['in']
                 args = ['-ss', str(c['in']), '-i', str(source)]
                 if not app.probe(source).get('has_audio'):
@@ -257,8 +297,15 @@ def render(app, executable, job):
                 args += ['-t', str(d), '-map', '0:v:0', '-map', '0:a:0' if app.probe(source).get('has_audio') else '1:a:0',
                          '-vf', f'scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25',
                          '-af', f"volume={c['a']},apad,atrim=duration={d},asetpts=PTS-STARTPTS", '-c:v', 'libx264', '-preset', 'fast',
-                         '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-ac', '2', str(folder / f'{i}.mp4')]
+                         '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-ac', '2', str(target)]
                 run(args)
+                if cache:
+                    if app.file_hash(source) != c['fingerprint']:
+                        raise ValueError('编码期间源素材变化')
+                    write(app, app.rel(fingerprint), app.file_hash(target))
+                    os.replace(target, cached)
+                    shutil.copyfile(cached, target)
+                    job['encoded_segments'].append(c['id'])
                 job['completed'] = i + 1
                 write(app, path, job)
             listing = folder / 'concat.txt'

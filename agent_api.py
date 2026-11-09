@@ -19,10 +19,15 @@ import automation
 import workspace
 import generation
 import finishing
+import episode
 
 LOCK = threading.RLock()
 API_VERSION = '1'
 READS = {
+    'episode.list':'四类制作模板及运行列表',
+    'episode.get':'id，读取运行状态、审查/返修/精修子任务编号和交付',
+    'episode.report':'id 与可选 cycle，读取实际范围、费用、素材与证据、交付与未决项',
+
     'finishing.list':'列出剪映交接、修订关系、原生变化与回收片验收',
     'finishing.preview':'source=current/draft/final/legacy；final 选填；预检微秒时间线、素材和不支持效果',
 
@@ -48,6 +53,11 @@ READS = {
     'timeline.get':'读取指定final的冻结快照，省略final时读取当前剪辑',
 }
 WRITES = {
+    'episode.start':'authorize=true；template=episode|review|rough|repair，segments 按时间线排列，source=auto|current|candidates，deliver=rough|jianying，acceptance=director|reviewed；max_credits/max_attempts/repairs/expected_dialogue/confidence 可选；采用候选初剪作为返修草稿须 adopt_rough=true',
+    'episode.pause':'id；暂停派发新步骤，保留已发任务的回执',
+    'episode.resume':'id；续跑原任务；refresh=true 则为新输入开新轮并复用未变检查，可用 authorize_repairs=true 显式登记本轮 repairs',
+    'episode.decide':'id/path/film_hash/status=approved|rejected/note；验收初剪或选择本轮已复查的剪映回收版',
+
     'finishing.create':'source/final/signature；从预览生成一份独立可编辑剪映草稿',
     'finishing.revise':'id/operations；基于管理副本创建新修订，保留原生编辑',
     'finishing.publish':'id；剪映完全退出后注册一份新原生草稿',
@@ -155,6 +165,7 @@ def revision(app,db):
     files=[app.SEG,app.REVIEW,app.FB,editing.DRAFT,quality.STATE,'反馈/返修问题.json']
     state={'files':{p:app.file_hash(app.safe(p)) for p in files},
            'finishing':finishing.revision_state(app),
+           'episode':{r['id']:r['updated'] for r in episode.listing(app)['items']},
            'assets':[tuple(r) for r in db.execute('SELECT * FROM assets ORDER BY id')],
            'sequence':db.execute("SELECT value FROM meta WHERE key='sequence'").fetchone()[0]}
     return hashlib.sha256(json.dumps(state,sort_keys=True).encode()).hexdigest()
@@ -189,7 +200,7 @@ def segment(db,value):
 
 
 def task_sync(app,db):
-    all_jobs=[('export',x) for x in editing.jobs(app)]+[('upscale',x) for x in upscaling.status(app)['jobs']]+[('quality',x) for x in quality.reports(app)['items']]+[('automation',x) for x in automation.jobs(app)]+[('generation',x) for x in generation.jobs(app)]
+    all_jobs=[('export',x) for x in editing.jobs(app)]+[('upscale',x) for x in upscaling.status(app)['jobs']]+[('quality',x) for x in quality.reports(app)['items']]+[('automation',x) for x in automation.jobs(app)]+[('generation',x) for x in generation.jobs(app)]+[('episode',x) for x in episode.listing(app)['items']]
     pid=db.execute("SELECT value FROM meta WHERE key='project_id'").fetchone()[0]
     for kind,job in all_jobs:
         status=job['status']
@@ -198,7 +209,7 @@ def task_sync(app,db):
         status={'completed':'succeeded'}.get(status,status)
         identity=str(uuid.uuid5(uuid.UUID(pid),kind+':'+job['id']))
         entry={'id':identity,'kind':kind,'native_id':job['id'],'status':status,'can_cancel':kind in ('export','upscale','automation') and status in ('running','queued','waiting_review','needs_decision'),
-               'can_retry':kind!='generation' and status in ('failed','cancelled','interrupted'),'progress':job,'outputs':[job['final'] if kind=='export' else job.get('output',job.get('final'))] if status=='succeeded' and kind!='quality' and (job.get('final') or job.get('output')) else [],
+               'can_retry':kind not in ('generation','episode') and status in ('failed','cancelled','interrupted'),'progress':job,'outputs':[job['final'] if kind=='export' else job.get('output',job.get('final'))] if status=='succeeded' and kind!='quality' and (job.get('final') or job.get('output')) else [],
                'error':job.get('error',''),'content_status':'not_inferred'}
         db.execute('INSERT INTO tasks VALUES(?,?,?,?) ON CONFLICT(kind,native_id) DO UPDATE SET snapshot=excluded.snapshot',
                    (identity,kind,job['id'],json.dumps(entry,ensure_ascii=False)))
@@ -239,14 +250,14 @@ def dispatch(app,body):
         db.execute('INSERT INTO receipts VALUES(?,?,?,NULL)',(key,request,'dispatching'))
         db.commit()  # 先落盘；崩溃窗口保持待核对，不能自动重放副作用。
         try:
-            if op in ('finishing.create','finishing.revise'):
+            if op in ('finishing.create','finishing.revise','episode.start'):
                 args={**args,'request_id':uuid.uuid5(uuid.UUID(body['project_id']),key).hex}
             result=write_operation(app,db,op,args)
             sync_assets(app,db)
             db.execute("UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='sequence'")
             tasks=task_sync(app,db)
             response={'result':result,'revision':revision(app,db),'api_version':API_VERSION}
-            if op in ('export.start','upscale.start','quality.scan','finishing.scan','automation.start','automation.resume','generation.submit','generation.retry','generation.record','generation.export','tasks.retry'):
+            if op in ('episode.start','episode.resume','export.start','upscale.start','quality.scan','finishing.scan','automation.start','automation.resume','generation.submit','generation.retry','generation.record','generation.export','tasks.retry'):
                 native_ids={j['id'] for j in result.get('jobs',[result]) if isinstance(j,dict) and 'id' in j}
                 response['tasks']=[t for t in tasks if t['native_id'] in native_ids]
             db.execute("UPDATE receipts SET state='completed',result=? WHERE key=?",(json.dumps(response,ensure_ascii=False),key))
@@ -261,6 +272,10 @@ def dispatch(app,body):
 
 
 def read_operation(app,db,op,args):
+    if op=='episode.list':return episode.listing(app)
+    if op in ('episode.get','episode.report'):
+        run=episode.load(app,args.get('id'))
+        return episode.view(run) if op=='episode.get' else episode.report(app,run,args.get('cycle'))
     if op=='finishing.list':return finishing.listing(app)
     if op=='finishing.preview':return finishing.preview(app,args)
     if op=='generation.providers':return generation.capabilities()
@@ -305,6 +320,10 @@ def read_operation(app,db,op,args):
 
 
 def write_operation(app,db,op,args):
+    if op.startswith('episode.'):
+        if op=='episode.start' and isinstance(args.get('segments'),list):
+            args={**args,'segments':[segment(db,value) if isinstance(value,str) else value for value in args['segments']]}
+        return episode.ACTIONS[op.split('.',1)[1]](app,args)
     if op.startswith('finishing.'):
         return finishing.ACTIONS[op.split('.',1)[1]](app,args)
     if op=='generation.submit':

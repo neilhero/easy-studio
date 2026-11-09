@@ -117,7 +117,7 @@ def attempt(job, quoted_credits):
     return entry
 
 
-def submit(app, body):
+def submit(app, body, *, owner=None):
     request_id = body.get('request_id') or uuid.uuid4().hex
     path = path_for(app, request_id)
     if not path:
@@ -187,6 +187,8 @@ def submit(app, body):
            'preserve': preserve, 'evidence': evidence, 'source': clip,
            'base': {'signature': plan['signature'], 'revision': plan['draft_revision'], 'index': indices[0], 'canvas': canvas},
            'max_attempts': max_attempts, 'max_credits': max_credits, 'attempts': []}
+    if owner:
+        job['episode_owner'] = owner
     entry = attempt(job, quoted)
     if provider == 'rife':
         launch_local(app, job)
@@ -202,6 +204,11 @@ def submit(app, body):
 
 def claim(app, body):
     job = read(app, body.get('job_id'))
+    if job.get('episode_owner') and job['phase']=='submit':
+        import episode
+        run = episode.load(app,job['episode_owner'])
+        if not run['enabled'] or run['id'] not in episode.ACTIVE:
+            raise ValueError('制作运行已暂停或中断，恢复后才能认领新提交')
     if job['provider'] != 'libtv' or job['phase'] not in ('submit', 'poll', 'collect'):
         raise ValueError('该任务没有待执行的 LibTV 步骤')
     if job.get('lease') and job['lease']['until'] >= time.time():
@@ -412,8 +419,10 @@ def review_record(app, job):
     return record if record and record['fingerprint'] == current else None
 
 
-def retry(app, body):
+def retry(app, body, *, owner=None):
     job = read(app, body.get('job_id'))
+    if job.get('episode_owner') and job['episode_owner']!=owner:
+        raise ValueError('该返修由整集预算管理，请在制作运行内续跑')
     if body.get('attempt') != len(job['attempts']):
         raise ValueError('任务已更新，请刷新')
     reviewed = review_record(app, job)
