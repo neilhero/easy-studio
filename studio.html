@@ -780,6 +780,9 @@ details.rec[open] > summary { margin-bottom: 8px; }
 .lightbox .cap { max-width: 80vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast { pointer-events: none; }
 /* 镜头评审沿用现有控件；对照窗口留足两幅画面的宽度。 */
+.generation-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-block:12px; }
+.generation-fields label { display:grid; gap:5px; align-content:start; }
+.generation-fields textarea { width:100%; }
 .review-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
 .review-box { margin-top:16px; padding:12px; background:var(--island-2); border-radius:12px; }
 .review-box .select, .review-box .textarea { margin-top:8px; }
@@ -891,6 +894,7 @@ body { -webkit-font-smoothing:antialiased; }
     <button class="i" type="button" data-view="library" title="素材库"><span class="ic"></span><span class="l">素材库</span></button>
     <button class="i" type="button" id="qualityBtn" title="连戏与质检"><span class="ic"></span><span class="l">质检</span></button>
     <button class="i" type="button" id="automationBtn" title="镜头与候选"><span class="ic"></span><span class="l">镜头与候选</span></button>
+    <button class="i" type="button" id="generationBtn" title="模型生成与单镜返修"><span class="ic"></span><span class="l">单镜返修</span></button>
     <button class="i" type="button" id="tasksBtn" title="统一任务"><span class="ic"></span><span class="l">任务</span></button>
     <span class="sp"></span>
     <button class="i drawerbtn" type="button" id="drawerBtn" title="打开面板" aria-pressed="false"><span class="ic"></span><span class="l">面板</span></button>
@@ -957,7 +961,7 @@ const ICON = {
   expand: svg('<path d="m6 6 6 6-6 6M13 6l6 6-6 6"/>'), collapse: svg('<path d="m18 6-6 6 6 6M11 6l-6 6 6 6"/>'),
   pen: svg('<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="m12.5 7.5 4 4"/>'), minus: svg('<path d="M5 12h14"/>'), plus: svg('<path d="M12 5v14M5 12h14"/>'), refresh: svg('<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'),
 };
-$$('.nav .i').forEach(b => { const v = b.dataset.view; b.querySelector('.ic').innerHTML = ICON[{ watch: 'film', progress: 'table', library: 'grid' }[v] || { drawerBtn: 'panel', navToggle: 'expand', theme: 'moon', qualityBtn: 'table', tasksBtn: 'table', automationBtn: 'film' }[b.id]]; });
+$$('.nav .i').forEach(b => { const v = b.dataset.view; b.querySelector('.ic').innerHTML = ICON[{ watch: 'film', progress: 'table', library: 'grid' }[v] || { drawerBtn: 'panel', navToggle: 'expand', theme: 'moon', qualityBtn: 'table', tasksBtn: 'table', generationBtn: 'film', automationBtn: 'film' }[b.id]]; });
 
 const S = { view: 'watch', proj: null, finals: { videos: [], docs: [] }, cur: null, cmp: { mode: 'off', alt: null, offset: 0, audio: 'cur', blinkOn: false }, markers: [], draft: null,
   auxTab: 'marks', fbPath: '反馈/待处理.md', editing: null, segs: null, selSeg: null, lib: null, selLib: null, libCat: '全部', doc: null, docPath: null, lb: null };
@@ -1790,15 +1794,161 @@ function showAutoPacket(p){
   dialog.addEventListener('close',()=>{video.pause();dialog.querySelectorAll('audio').forEach(a=>a.pause());dialog.remove();});document.body.append(dialog);dialog.showModal();
 }
 
+$('#generationBtn').addEventListener('click', async () => {
+  const dialog = h('dialog', {class:'review-dialog','aria-label':'模型生成与单镜返修'});
+  const jobs = h('div',{},'正在读取返修任务…');
+  const form = h('div',{class:'generation-fields'});
+  const shot = h('select',{'aria-label':'返修镜头'});
+  const provider = h('select',{'aria-label':'生成方式'},
+    h('option',{value:'rife'},'本机 RIFE · 补帧'),
+    h('option',{value:'libtv'},'LibTV · 生成新画面'));
+  const issue = h('textarea',{class:'textarea','aria-label':'要修什么',rows:2});
+  const preserve = h('textarea',{class:'textarea','aria-label':'要保留什么',rows:2});
+  const evidence = h('input',{'aria-label':'证据或时间码'});
+  const attempts = h('input',{type:'number',min:1,max:5,value:1,'aria-label':'最多尝试次数'});
+  const canvas = h('input',{'aria-label':'LibTV 画布 ID'});
+  const model = h('input',{'aria-label':'LibTV 模型'});
+  const prompt = h('textarea',{class:'textarea','aria-label':'生成提示词',rows:2});
+  const credits = h('input',{type:'number',min:1,step:1,'aria-label':'本次预计积分'});
+  const budget = h('input',{type:'number',min:1,step:1,'aria-label':'本单积分上限'});
+  const refs = h('input',{'aria-label':'首帧节点 ID',placeholder:'可选'});
+  const params = h('input',{'aria-label':'LibTV 模型参数',placeholder:'可选 JSON'});
+  const watermark = h('select',{'aria-label':'交付水印'},h('option',{value:'keep'},'保留水印'),h('option',{value:'remove'},'申请无水印交付'));
+  const spend = h('input',{type:'checkbox','aria-label':'同意本次积分预留'});
+  const field = (name, control) => h('label',{class:'s'},name,control);
+  const external = h('div',{class:'generation-fields',hidden:true,style:'display:none'},
+    field('画布 ID',canvas),field('模型',model),field('提示词',prompt),field('首帧节点',refs),
+    field('模型参数',params),field('本次预计积分',credits),field('本单积分上限',budget),
+    field('交付水印',watermark),field('同意按本次额度提交',spend));
+  const hint = h('p',{class:'s t3'});
+  let available = false;
+  let signature = '';
+  let submitting = false;
+  let pendingRequest;
+  const start = h('button',{class:'pill primary',disabled:true,onclick:async()=>{
+    if (submitting) return;
+    submitting = true;
+    controls();
+    try {
+      const request = {segment:shot.value,provider:provider.value,
+        issue:issue.value,preserve:preserve.value,evidence:evidence.value,max_attempts:Number(attempts.value)};
+      if (provider.value==='libtv') Object.assign(request,{libtv_project:canvas.value,model:model.value,prompt:prompt.value,
+        params:params.value.trim()?JSON.parse(params.value):{},references:refs.value.trim()?{start_frame:[refs.value.trim()]}:{},
+        max_credits:Number(budget.value),quoted_credits:Number(credits.value),watermark:watermark.value,confirm_spend:spend.checked});
+      const key = JSON.stringify(request);
+      if (pendingRequest?.key !== key) pendingRequest = {key,id:crypto.randomUUID().replaceAll('-','')};
+      await post('/api/generation',{...request,request_id:pendingRequest.id});
+      pendingRequest = null;
+      toast(request.provider==='libtv'?'已排队，交给已连接 LibTV 的智能体处理':'本机模型已开始补帧','ok');
+      await refresh();
+    } catch(e) { toast(e.message,'bad'); }
+    finally { submitting = false; controls(); }
+  }},'提交单镜返修');
+  function controls() {
+    const remote = provider.value==='libtv';
+    external.hidden = !remote;
+    external.style.display = remote?'':'none';
+    start.disabled = submitting || !shot.value || (!remote && !available);
+    hint.textContent = remote
+      ? '智能体认领后核对报价、提交原请求、查询并下载。请提供 LibTV 实际报价。'
+      : available ? '补帧生成新的中间画面，保留原速度与原声。' : '当前本机 RIFE 服务未配置。';
+  }
+  provider.addEventListener('change',controls);
+  form.append(field('镜头',shot),field('生成方式',provider),field('要修什么',issue),field('要保留什么',preserve),
+    field('证据或时间码（可选）',evidence),field('最多尝试次数',attempts));
+  const statuses = {queued:'排队中',running:'执行中',waiting_host:'等待智能体',needs_reconciliation:'待核对原请求',
+    completed:'候选已回收',failed:'失败',interrupted:'中断'};
+  const action = (label, handler) => h('button',{class:'pill sm',onclick:async e=>{
+    const b=e.currentTarget;b.disabled=true;
+    try { await handler(); await refresh(); }
+    catch(error) { toast(error.message,'bad'); }
+    finally { b.disabled=false; }
+  }},label);
+  async function refresh() {
+    const data=await api('/api/generation');
+    if (available !== data.providers.rife.ready) { available=data.providers.rife.ready; controls(); }
+    const current=JSON.stringify(data.items);
+    if (current===signature) return;
+    signature=current;
+    jobs.replaceChildren(...data.items.map(j=>{
+      const a=j.attempts.at(-1);
+      const card=h('div',{class:'task-card'},h('div',{class:'task-heading'},h('b',{},j.segment+' · '+(j.provider==='rife'?'本机 RIFE':'LibTV')),
+        h('span',{class:'badge'},statuses[j.status]||j.status)),
+        h('p',{class:'s'},j.stage+(j.error?' · '+j.error:'')),h('p',{class:'xs t3'},j.id),
+        h('p',{class:'s t3'},j.provider==='rife'
+          ? `第 ${a.number}/${j.max_attempts} 次${a.elapsed!=null?' · '+a.elapsed+' 秒':''}`
+          : `第 ${a.number}/${j.max_attempts} 次 · 已占用 ${j.budget_used}/${j.max_credits} 积分 · 本次预留 ${a.reserved} · 实扣 ${a.credits ?? '未知'}${a.task_id?' · LibTV '+a.task_id:''}`));
+      const buttons=h('div',{class:'review-actions'});
+      if (j.provider==='libtv' && j.phase!=='done') {
+        buttons.append(action('复制给 Codex',()=>copyText('请推进 Lazy Studio 的 LibTV 返修任务 '+j.id,'已复制返修任务')));
+      }
+      if (j.output) {
+        buttons.append(h('a',{href:fileUrl(j.output),class:'pill sm',target:'_blank',rel:'noopener'},'看片候选'));
+        card.append(h('p',{class:'s'},'候选审查 · '+({approved:'通过',rejected:'退回',pending:'待审'})[j.review_status]));
+        if (!j.applied_revision) {
+          for (const [status,label] of [['approved','看片后通过'],['rejected','退回候选']]) {
+            buttons.append(action(label,async()=>{
+              const note=window.prompt(status==='approved'?'填写已核对的画面、声音与接戏':'填写退回原因');
+              if (!note?.trim()) return;
+              await post('/api/review',{action:'review',segment:j.segment,path:j.output,
+                fingerprint:j.output_hash,status,note});
+            }));
+          }
+          if (j.review_status==='approved') {
+            const inPoint=h('input',{type:'number',min:0,step:0.01,value:0,'aria-label':'候选入点秒'});
+            buttons.append(h('label',{class:'s'},'候选入点（秒）',inPoint),action('等长替换此镜',async()=>{
+              await post('/api/generation/apply',{job_id:j.id,in:Number(inPoint.value)});
+              toast('已替换并保存草稿','ok');
+            }));
+          }
+        }
+      }
+      if (j.applied_revision) buttons.append(action('导出新版',async()=>{
+        const exported = await post('/api/generation/export',{job_id:j.id});
+        toast(exported.status==='completed'?'新版已导出，可在看片页打开':'导出任务已登记，可在统一任务查看','ok');
+      }));
+      if (!j.applied_revision && a.number<j.max_attempts && (['failed','interrupted'].includes(j.status)||j.review_status==='rejected')) {
+        buttons.append(action('重试此镜',async()=>{
+          const request={job_id:j.id,attempt:a.number};
+          if(j.provider==='libtv'){
+            const quote=window.prompt('输入此次 LibTV 报价（积分），确认后预留额度',String(a.reserved));
+            if(!quote?.trim()) return;
+            Object.assign(request,{quoted_credits:Number(quote),confirm_spend:true});
+          }
+          await post('/api/generation/retry',request);
+        }));
+      }
+      card.append(buttons);
+      return card;
+    }));
+    if (!data.items.length) jobs.append(h('p',{class:'s t3'},'暂无返修任务'));
+  }
+  dialog.append(h('div',{class:'review-actions'},h('b',{},'模型生成与单镜返修'),
+    h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),
+    h('p',{class:'s t3'},'先生成该镜的新候选，看片通过后再等长替换。导出会生成新的成片版本。'),
+    form,external,hint,h('div',{class:'review-actions'},start),jobs);
+  document.body.append(dialog);
+  dialog.showModal();
+  const timer=setInterval(()=>refresh().catch(()=>{}),3500);
+  dialog.addEventListener('close',()=>{clearInterval(timer);dialog.remove();});
+  try {
+    const data=await api('/api/workspace');
+    for (const row of data.shots.filter(row=>row.uses.length===1)) shot.append(h('option',{value:row.id},row.id+' · '+row.scene));
+    await refresh();
+    controls();
+    if (data.error) hint.textContent=data.error;
+  } catch(e) { jobs.textContent=e.message; }
+});
+
 $('#tasksBtn').addEventListener('click', async () => {
   const dialog = h('dialog',{class:'review-dialog','aria-label':'统一任务'});
   const body = h('div');
-  const labels = {queued:'排队',running:'执行中',succeeded:'执行成功',waiting_review:'等待智能体审查',needs_decision:'需要处理问题',failed:'失败',cancelled:'已取消',interrupted:'已中断'};
+  const labels = {queued:'排队',running:'执行中',succeeded:'执行成功',waiting_review:'等待智能体审查',waiting_host:'等待智能体',needs_reconciliation:'待核对原请求',needs_decision:'需要处理问题',failed:'失败',cancelled:'已取消',interrupted:'已中断'};
   async function refresh() {
     try {
       const data=await api('/api/tasks');body.replaceChildren();
       if(!data.items.length)body.append(h('p',{class:'s t3'},'暂无任务。网页与智能体创建的质检、超分和导出会汇总到这里。'));
-      data.items.forEach(t=>body.append(h('div',{class:'task-card'},h('div',{class:'task-heading'},h('b',{},({export:'初剪导出',upscale:'超分',quality:'技术质检',automation:'自动审片与初剪'})[t.kind]),h('span',{class:'badge'},labels[t.status] || t.status)),h('p',{class:'s t3'},t.progress.final || t.progress.source || t.progress.path || t.id),h('p',{class:'xs t3'},'任务ID：'+t.id),h('p',{class:'s'},t.error || t.progress.stage || ('执行状态与内容过审分别记录')), ...t.outputs.map(path=>h('a',{href:fileUrl(path),target:'_blank',class:'s'},path)))));
+      data.items.forEach(t=>body.append(h('div',{class:'task-card'},h('div',{class:'task-heading'},h('b',{},({export:'初剪导出',upscale:'超分',quality:'技术质检',automation:'自动审片与初剪',generation:'单镜返修'})[t.kind]),h('span',{class:'badge'},labels[t.status] || t.status)),h('p',{class:'s t3'},t.progress.final || t.progress.source?.src || t.progress.source || t.progress.path || t.id),h('p',{class:'xs t3'},'任务ID：'+t.id),h('p',{class:'s'},t.error || t.progress.stage || ('执行状态与内容过审分别记录')), ...t.outputs.map(path=>h('a',{href:fileUrl(path),target:'_blank',class:'s'},path)))));
     }catch(e){body.textContent=e.message;}
   }
   dialog.append(h('div',{class:'review-actions'},h('b',{},'统一任务'),h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),body);

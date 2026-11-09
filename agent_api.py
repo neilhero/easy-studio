@@ -17,10 +17,14 @@ import quality
 import upscaling
 import automation
 import workspace
+import generation
 
 LOCK = threading.RLock()
 API_VERSION = '1'
 READS = {
+    'generation.providers':'查看 LibTV 宿主桥与本机 RIFE 可用能力',
+    'generation.list':'查询返修任务、预算预留、已知实扣及候选',
+    'generation.get':'job_id，查询返修任务与提供方原任务身份',
     'automation.workspace':'当前镜头与候选：当前使用素材、入出点、备用数量和可选工作版本',
     'automation.evaluate':'run_id与人工labels数组(packet_id/check/expected)，统计误报、漏报和决定覆盖率，不推算未标注准确率',
     'automation.list':'列出自动审片运行及候选/接缝/全片复查状态',
@@ -40,6 +44,12 @@ READS = {
     'timeline.get':'读取指定final的冻结快照，省略final时读取当前剪辑',
 }
 WRITES = {
+    'generation.submit':'segment/provider/issue/preserve/evidence/max_attempts；LibTV另填libtv_project/model/prompt/params/references/watermark/max_credits/quoted_credits/confirm_spend；resume_task_id 仅回收已有任务',
+    'generation.claim':'job_id/actor；认领 LibTV 当前步骤；未知受理仅 recover=true 后用同一请求恢复',
+    'generation.record':'job_id/lease_token/outcome；登记真实原任务回执或授权交付下载',
+    'generation.retry':'job_id/attempt；失败或候选退回后重试；LibTV再次给quoted_credits/confirm_spend',
+    'generation.apply':'job_id/in；采用已审查通过的候选，按原镜头长度替换草稿',
+    'generation.export':'job_id；保留原剪辑画幅，导出已采用返修的新版成片',
     'automation.apply':'run_id/draft_revision，显式采用已复查的重剪建议；草稿另有修改时拒绝覆盖',
     'automation.start':'mode默认inspect检查当前剪辑；rebuild才重新选片。source=current/draft/final/legacy，final可选；segments勾选时强制复查指定镜头；expected_dialogue/confidence可选',
     'automation.claim':'run_id/actor；认领一份待审证据，返回15分钟租约与要求',
@@ -167,7 +177,7 @@ def segment(db,value):
 
 
 def task_sync(app,db):
-    all_jobs=[('export',x) for x in editing.jobs(app)]+[('upscale',x) for x in upscaling.status(app)['jobs']]+[('quality',x) for x in quality.reports(app)['items']]+[('automation',x) for x in automation.jobs(app)]
+    all_jobs=[('export',x) for x in editing.jobs(app)]+[('upscale',x) for x in upscaling.status(app)['jobs']]+[('quality',x) for x in quality.reports(app)['items']]+[('automation',x) for x in automation.jobs(app)]+[('generation',x) for x in generation.jobs(app)]
     pid=db.execute("SELECT value FROM meta WHERE key='project_id'").fetchone()[0]
     for kind,job in all_jobs:
         status=job['status']
@@ -176,7 +186,7 @@ def task_sync(app,db):
         status={'completed':'succeeded'}.get(status,status)
         identity=str(uuid.uuid5(uuid.UUID(pid),kind+':'+job['id']))
         entry={'id':identity,'kind':kind,'native_id':job['id'],'status':status,'can_cancel':kind in ('export','upscale','automation') and status in ('running','queued','waiting_review','needs_decision'),
-               'can_retry':status in ('failed','cancelled','interrupted'),'progress':job,'outputs':[job['final'] if kind=='export' else job.get('output',job.get('final'))] if status=='succeeded' and kind!='quality' and (job.get('final') or job.get('output')) else [],
+               'can_retry':kind!='generation' and status in ('failed','cancelled','interrupted'),'progress':job,'outputs':[job['final'] if kind=='export' else job.get('output',job.get('final'))] if status=='succeeded' and kind!='quality' and (job.get('final') or job.get('output')) else [],
                'error':job.get('error',''),'content_status':'not_inferred'}
         db.execute('INSERT INTO tasks VALUES(?,?,?,?) ON CONFLICT(kind,native_id) DO UPDATE SET snapshot=excluded.snapshot',
                    (identity,kind,job['id'],json.dumps(entry,ensure_ascii=False)))
@@ -189,8 +199,8 @@ def project(app):
         tasks=task_sync(app,db)
         return {**app.api_project(),'api_version':API_VERSION,'project_id':db.execute("SELECT value FROM meta WHERE key='project_id'").fetchone()[0],
                 'revision':revision(app,db),'import_roots':[str(p) for p in getattr(app,'IMPORT_ROOTS',[])],
-                'task_counts':{s:sum(t['status']==s for t in tasks) for s in ('queued','running','waiting_review','needs_decision','succeeded','failed','cancelled','interrupted')},
-                'operations':{'read':READS,'write':WRITES},'capabilities':{'quality_cancel':False,'transport':'stdio proxy to local authenticated HTTP','automatic_generation':False,'automatic_review':{'host_bridge':True,'local_command_configured':bool(os.environ.get('STUDIO_REVIEW_COMMAND')),'asr_configured':bool(os.environ.get('STUDIO_ASR_PYTHON') and os.environ.get('STUDIO_ASR_MODEL'))}}}
+                'task_counts':{s:sum(t['status']==s for t in tasks) for s in ('queued','running','waiting_review','waiting_host','needs_reconciliation','needs_decision','succeeded','failed','cancelled','interrupted')},
+                'operations':{'read':READS,'write':WRITES},'capabilities':{'quality_cancel':False,'transport':'stdio proxy to local authenticated HTTP','automatic_generation':bool(generation.local_config()),'generation_providers':generation.capabilities(),'automatic_review':{'host_bridge':True,'local_command_configured':bool(os.environ.get('STUDIO_REVIEW_COMMAND')),'asr_configured':bool(os.environ.get('STUDIO_ASR_PYTHON') and os.environ.get('STUDIO_ASR_MODEL'))}}}
 
 
 def dispatch(app,body):
@@ -222,7 +232,7 @@ def dispatch(app,body):
             db.execute("UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='sequence'")
             tasks=task_sync(app,db)
             response={'result':result,'revision':revision(app,db),'api_version':API_VERSION}
-            if op in ('export.start','upscale.start','quality.scan','automation.start','automation.resume','tasks.retry'):
+            if op in ('export.start','upscale.start','quality.scan','automation.start','automation.resume','generation.submit','generation.retry','generation.record','generation.export','tasks.retry'):
                 native_ids={j['id'] for j in result.get('jobs',[result]) if isinstance(j,dict) and 'id' in j}
                 response['tasks']=[t for t in tasks if t['native_id'] in native_ids]
             db.execute("UPDATE receipts SET state='completed',result=? WHERE key=?",(json.dumps(response,ensure_ascii=False),key))
@@ -237,6 +247,9 @@ def dispatch(app,body):
 
 
 def read_operation(app,db,op,args):
+    if op=='generation.providers':return generation.capabilities()
+    if op=='generation.list':return {'items':generation.jobs(app)}
+    if op=='generation.get':return generation.get(app,args.get('job_id'))
     if op=='automation.workspace':return workspace.overview(app,args.get('final'),args.get('source','current'))
     if op=='automation.evaluate':return automation.evaluate(app,args)
     if op=='automation.list':return {'items':automation.jobs(app)}
@@ -275,6 +288,13 @@ def read_operation(app,db,op,args):
 
 
 def write_operation(app,db,op,args):
+    if op=='generation.submit':
+        return generation.submit(app,{**args,'segment':segment(db,args.get('segment'))})
+    if op=='generation.claim':return generation.claim(app,args)
+    if op=='generation.record':return generation.record(app,args)
+    if op=='generation.retry':return generation.retry(app,args)
+    if op=='generation.apply':return generation.apply(app,args)
+    if op=='generation.export':return generation.export(app,args)
     if op=='automation.apply':return automation.apply_suggestion(app,args)
     if op=='automation.start':return automation.start(app,args)
     if op=='automation.claim':return automation.claim(app,args)

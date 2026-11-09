@@ -17,6 +17,7 @@ import quality
 import agent_api
 import automation
 import workspace
+import generation
 import hmac
 
 VERSION = (HERE / "VERSION").read_text(encoding="utf-8").strip()
@@ -841,6 +842,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(agent_api.project(sys.modules[__name__]))
             if path == "/api/tasks":
                 return self._json(agent_api.dispatch(sys.modules[__name__], {"operation":"tasks.list","arguments":{"limit":200}})["result"])
+            if path == "/api/generation":
+                return self._json({"items":generation.jobs(sys.modules[__name__]),"providers":generation.capabilities()})
             if path == "/api/workspace":
                 return self._json(workspace.overview(sys.modules[__name__],q.get("final",[None])[0],q.get("source",["current"])[0]))
             if path == "/api/automation":
@@ -921,6 +924,14 @@ class H(BaseHTTPRequestHandler):
             return
         u = urllib.parse.urlsplit(self.path)
         try:
+            if u.path == "/api/generation":
+                return self._json(generation.submit(sys.modules[__name__],self._body()))
+            if u.path == "/api/generation/retry":
+                return self._json(generation.retry(sys.modules[__name__],self._body()))
+            if u.path == "/api/generation/export":
+                return self._json(generation.export(sys.modules[__name__],self._body()))
+            if u.path == "/api/generation/apply":
+                return self._json(generation.apply(sys.modules[__name__],self._body()))
             if u.path == "/api/automation/apply":
                 return self._json(automation.apply_suggestion(sys.modules[__name__],self._body()))
             if u.path == "/api/automation":

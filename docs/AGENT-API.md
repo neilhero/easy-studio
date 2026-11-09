@@ -128,3 +128,7 @@ python3 run.py --root '/项目目录' --port 8790 --import-root '/允许导入�
 如需旧版重新选片行为，必须显式传`mode: "rebuild"`，`segments`为参与初剪的镜头。建议另存，原草稿及原选片记录保留。
 完成建议可用`automation.apply`（`run_id`、`draft_revision`）显式采用为草稿；原草稿可撤销，期间有修改则拒绝覆盖。
 详细范围、缓存及历史报告行为见[AUTOMATIC-REVIEW.md](AUTOMATIC-REVIEW.md)。
+
+## v0.8 单镜返修
+
+新增 `generation.providers/list/get/submit/claim/record/retry/apply/export`，参见[模型生成与单镜返修](GENERATION.md)。

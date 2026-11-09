@@ -84,7 +84,7 @@ def timeline(clips):
             'look': 'none', 'target_i': None, 'duck_db': None}
 
 
-def mutate(app, body):
+def mutate(app, body, *, expected_clips=None):
     with LOCK:
         state = read(app)
         if body.get('revision') != state['revision']:
@@ -123,6 +123,8 @@ def mutate(app, body):
             else:
                 raise ValueError('未知剪辑操作')
             clips = validate(app, clips)
+            if expected_clips is not None and clips != expected_clips:
+                raise ValueError('保存期间素材变化，请重新核对')
             state['undo'] = (state['undo'] + [state['clips']])[-50:]
             state['redo'] = []
             state['clips'] = clips
@@ -162,7 +164,7 @@ def start(app, body, *, snapshot=None):
             old = next((j for j in jobs(app) if j['id'] == retry), None)
             if not old or old['status'] not in ('failed', 'cancelled'):
                 raise ValueError('只能重试失败或已取消的任务')
-            state = {'revision': old['revision'], 'clips': old['clips']}
+            state = {k: old[k] for k in ('revision', 'clips', 'canvas', 'repair_job') if k in old}
         elif snapshot is None and body.get('revision') != state['revision']:
             raise ValueError('请先保存最新草稿')
         clips = validate(app, state['clips'])
@@ -183,6 +185,9 @@ def start(app, body, *, snapshot=None):
         output = f'final/初剪_v{max(existing, default=0)+1:03d}.mp4'
         job = {'id': token, 'status': 'queued', 'completed': 0, 'total': len(clips), 'final': output,
                'revision': state['revision'], 'clips': clips, 'error': '', 'retry_of': retry}
+        for key in ('canvas', 'repair_job'):
+            if key in state:
+                job[key] = state[key]
         write(app, f'剪辑/导出任务/{token}.json', job)
         ACTIVE.add(token)
         CANCEL[token] = threading.Event()
@@ -239,7 +244,8 @@ def render(app, executable, job):
         with tempfile.TemporaryDirectory(dir=app.safe('剪辑')) as folder:
             folder = pathlib.Path(folder)
             first = app.probe(app.safe(job['clips'][0]['src']))
-            w, h = int(first['width']) // 2 * 2, int(first['height']) // 2 * 2
+            width, height = job.get('canvas', (first['width'], first['height']))
+            w, h = int(width) // 2 * 2, int(height) // 2 * 2
             for i, c in enumerate(job['clips']):
                 source = app.safe(c['src'])
                 if app.file_hash(source) != c['fingerprint']:
