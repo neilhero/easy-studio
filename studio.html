@@ -843,13 +843,15 @@ details.rec[open] > summary { margin-bottom: 8px; }
 #libBody .section-h { grid-column:1/-1; margin-bottom:2px; font-size:17px; letter-spacing:-.015em; }
 #libBody .section-h .n { padding:2px 7px; border-radius:6px; background:var(--island-3); }
 #libBody .lib-group { padding:12px; margin:0; align-self:start; min-width:0; background:var(--island); border:1px solid var(--line); border-radius:var(--r-panel); box-shadow:var(--surface-shadow); }
-#libBody .lib-group .gh { min-height:20px; margin-bottom:10px; font-size:13px; }
+#libBody .lib-group .gh { min-height:22px; align-items:center; margin-bottom:10px; font-size:13px; }
+#libBody .lib-group .gh b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #libBody .grid.lib { grid-template-columns:repeat(auto-fit,minmax(min(100%,110px),1fr)); gap:8px; }
 #libBody .pic { width:100%; border-radius:9px; overflow:hidden; outline:2px solid transparent; outline-offset:2px; transition:outline-color .18s,transform .18s; }
 #libBody .pic:hover { transform:translateY(-1px); }
 #libBody .pic:is([aria-selected="true"],:focus-visible) { outline-color:var(--acc); }
 #libBody .pic :is(img,video) { width:100%; object-fit:cover; aspect-ratio:16/10; }
 #libBody .pic .cap { font-size:11px; background:linear-gradient(transparent,rgba(10,18,30,.85)); padding:16px 8px 7px; }
+#libBody .pic .cap .badge { font-size:inherit; padding:2px 5px; white-space:nowrap; }
 #v-library .head .actions :is(.pill,.select) { height:34px; min-height:34px; }
 #libCats { min-height:34px; padding:2px; flex-wrap:nowrap; }
 #libCats > button { padding-inline:11px; }
@@ -948,6 +950,10 @@ details.rec[open] > summary { margin-bottom: 8px; }
 .task-card .err { white-space:pre-wrap; }
 .edit-status { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr)); gap:12px 16px; }
 .edit-status p { margin:4px 0 0; overflow-wrap:anywhere; }
+.handoff-steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,155px),1fr)); gap:8px; padding:0; list-style:none; }
+.handoff-steps li { padding:8px 10px; border-radius:10px; background:var(--island-2); }
+.handoff-steps [aria-current="step"] { background:var(--acc-soft); color:var(--acc); font-weight:650; }
+.handoff-version { display:grid; gap:6px; }
 .review-pair, .compare-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:12px; }
 .review-pair video { width:100%; aspect-ratio:16/9; background:#000; object-fit:contain; }
 
@@ -1854,9 +1860,50 @@ function libSortMode() {
 const libCompare = (a, b) => libNaturalOrder.compare(a, b) * (libSortMode() === 'desc' ? -1 : 1);
 const CAT_ORDER = ['产品', '模特', '剧组', '场景', '片场', '关键帧', '道具'];
 const catSort = (a, b) => ((CAT_ORDER.indexOf(a) + 1 || 99) - (CAT_ORDER.indexOf(b) + 1 || 99)) || a.localeCompare(b, 'zh');
+let libraryRequest = 0;
 async function renderLibrary(force) {
-  const v = $('#v-library'); v.innerHTML = '';
-  if (!S.lib || force) { v.append(h('p', { class: 's t3' }, '读取中…')); try { S.lib = await api('/api/library'); } catch (e) { v.innerHTML = ''; v.append(h('p', { class: 'err' }, '读不到素材库：' + e.message)); return; } v.innerHTML = ''; }
+  const request = ++libraryRequest;
+  const v = $('#v-library'), film = S.cur;
+  if (!S.lib) v.replaceChildren(h('p', {class:'s t3'}, '读取中…'));
+  const [library, segments, draft] = await Promise.allSettled([
+    !S.lib || force ? api('/api/library') : S.lib, api('/api/segments'), api('/api/edit')
+  ]);
+  let clips = [], source = '';
+  if (draft.value?.clips.length) {
+    clips = draft.value.clips;
+    source = '工作草稿 · 修订 ' + draft.value.revision;
+  } else if (draft.status === 'fulfilled') {
+    try {
+      let timeline = await api('/api/timeline?final=' + encodeURIComponent(film?.path || ''));
+      if (timeline.external) timeline = await api('/api/timeline');
+      if (timeline.found) {
+        clips = timeline.V.filter(clip => ['live','image'].includes(clip.kind));
+        source = timeline.exported ? '初剪成片 · ' + film.name : '项目剪辑表';
+      }
+    } catch {}
+  }
+  if (request !== libraryRequest) return;
+  if (library.status === 'rejected') {
+    v.replaceChildren(h('p', {class:'err'}, '读不到素材库：' + library.reason.message));
+    return;
+  }
+  S.lib = library.value;
+  S.libUsage = new Map();
+  const usage = path => {
+    if (!S.libUsage.has(path)) S.libUsage.set(path, {uses:[], candidates:[]});
+    return S.libUsage.get(path);
+  };
+  for (const clip of clips) {
+    const root = (S.proj?.root || '') + '/';
+    const path = clip.src.startsWith(root) ? clip.src.slice(root.length) : clip.src.replace(/^\.\//, '');
+    usage(path).uses.push(clip.id);
+  }
+  for (const row of segments.value?.rows || []) {
+    for (const c of row.files.candidates) usage(c.path).candidates.push({shot:row.id, review:c.selection_stale ? '需复核' : c.review});
+  }
+  S.libUsageSource = source;
+  S.selLib = S.lib.items?.find(x => x.path === S.selLib?.path) || null;
+  v.replaceChildren();
   const all = S.lib.items || [];
   const cats = [...new Set(all.map(x => x.cat))].sort(catSort);
   const search = h('label', { class: 'search', title: '按名字、变体或文件名找' }, h('span', { style: 'display:inline-grid;width:14px;height:14px', html: ICON.search }), h('input', { id: 'libQ', type: 'search', value: S.libQ || '', 'aria-label': '搜素材', oninput: e => { S.libQ = e.target.value; renderLibraryBody(); } }));
@@ -1867,8 +1914,19 @@ async function renderLibrary(force) {
   } }, ...[['asc', '序号升序 ↑'], ['desc', '序号降序 ↓']].map(([value, label]) => h('option', { value, selected: libSortMode() === value }, label)));
   v.append(h('div', { class: 'head', style: 'margin-bottom:20px' }, h('div', { class: 'title-row' }, h('span',{class:'workspace-label'},'项目资源'), h('h1', { class: 'title' }, '素材库'), h('span', { class: 'sub' }, S.lib.found ? `${all.length} 个文件` : '素材库/')),
     h('div', { class: 'actions', style: 'align-items:center;flex-wrap:wrap' }, search, sort, h('button', { class: 'pill sm', onclick: openUpscale }, '超分工作台'), h('div', { class: 'seg', id: 'libCats' }, ...['全部', ...cats].map(c => h('button', { type: 'button', 'aria-pressed': S.libCat === c ? 'true' : 'false', onclick: () => { S.libCat = c; $$('#libCats button').forEach(b => b.setAttribute('aria-pressed', b.textContent === c ? 'true' : 'false')); renderLibraryBody(); } }, c))), h('button', { class: 'pill sm', type: 'button', onclick: () => renderLibrary(true) }, '刷新'))));
+  if (all.length) v.append(h('p', {class:'s t3'}, (source ? '用片依据 · ' + source : '暂无可核对的剪辑') +
+    (segments.status === 'rejected' ? ' · 候选审查暂不可读' : '')));
   v.append(h('div', { id: 'libBody' }));
   renderLibraryBody(); renderAuxLibrary();
+}
+function libraryStatus(path) {
+  const entry = S.libUsage?.get(path);
+  if (!entry) return [];
+  const badges = [];
+  if (entry.uses.length) badges.push(['当前用片', 'ok']);
+  if (entry.candidates.some(c => ['需复核','退回'].includes(c.review))) badges.push(['需复核','warn']);
+  if (!badges.length && entry.candidates.length) badges.push([S.libUsageSource ? '备用候选' : '已关联候选','acc']);
+  return badges;
 }
 function renderLibraryBody() {
   const body = $('#libBody'); if (!body) return; body.innerHTML = '';
@@ -1887,9 +1945,16 @@ function renderLibraryBody() {
       const columns = Math.ceil(Math.sqrt(files.length));
       const visual = files.every(x => x.kind === 'image' || x.kind === 'video');
       const grid = h('div', { class: 'grid lib' + (visual ? ' shot-previews' : ''), style: `--preview-cols:${columns};--preview-rows:${Math.ceil(files.length / columns)}` }); const imgs = files.filter(x => x.kind === 'image');
-      files.forEach(x => {
+      files.forEach((x, index) => {
         if (x.kind === 'image') grid.append(h('button', { class: 'pic', type: 'button', 'data-path': x.path, 'aria-selected': S.selLib?.path === x.path ? 'true' : 'false', title: `${x.name}${x.variant ? ' · ' + x.variant : ''}。单击看详情，双击放大`, onclick: () => libSelect(x), ondblclick: () => openLightbox(imgs, imgs.indexOf(x)) }, h('img', { src: fileUrl(x.path), alt: x.name, loading: 'lazy' }), h('span', { class: 'cap' }, x.variant || x.name)));
-        else if (x.kind === 'video') grid.append(h('button', { class: 'pic wide', type: 'button', 'data-path': x.path, title: x.name, onclick: () => libSelect(x) }, h('video', { src: fileUrl(x.path), preload: 'metadata', muted: true }), h('span', { class: 'cap' }, x.variant || x.name)));
+        else if (x.kind === 'video') {
+          const badges = libraryStatus(x.path);
+          const label = name + ' · 片段 ' + (index + 1) + badges.map(([status]) => ' · ' + status).join('');
+          grid.append(h('button', {class:'pic wide',type:'button','data-path':x.path,
+            'aria-selected':String(S.selLib?.path === x.path),'aria-label':label,title:label,onclick:() => libSelect(x)},
+            h('video', {src:fileUrl(x.path),preload:'metadata',muted:true}),
+            h('span', {class:'cap'}, badges.length ? badges.map(([status, tone])=>h('span',{class:'badge '+tone},status)) : '片段 ' + (index + 1))));
+        }
         else if (x.kind === 'audio') grid.append(h('div', { class: 'aud' }, h('div', { class: 'n' }, x.variant || x.name), h('audio', { src: fileUrl(x.path), controls: true, preload: 'none' })));
       });
       g.append(grid); sec.append(g);
@@ -1902,13 +1967,18 @@ function renderAuxLibrary() {
   const a = $('#a-library'); a.innerHTML = ''; const x = S.selLib;
   if (!x) { a.append(h('div', { class: 'aux-h' }, h('b', {}, '点一张看详情'), h('span', {})), h('p', { class: 's t3' }, '单击看详情和提示词，双击放大。产品看颜色、logo、字对不对实拍；人看脸和衣服是不是同一套；空景看有没有人。')); return; }
   const sib = (S.lib?.items || []).filter(y => y.cat === x.cat && y.name === x.name && y.kind === 'image');
-  a.append(h('div', { class: 'aux-h' }, h('b', { class: 'ellipsis', style: 'min-width:0' }, `${x.name}${x.variant ? ' · ' + x.variant : ''}`), h('span', {}, x.cat)));
+  a.append(h('div', { class: 'aux-h' }, h('b', { class: 'ellipsis', style: 'min-width:0' }, x.kind === 'video' ? x.name : `${x.name}${x.variant ? ' · ' + x.variant : ''}`), h('span', {}, x.cat)));
   const box = h('div', { class: 'lib-aux' });
   if (x.kind === 'image') { const list = sib.length ? sib : [x]; const idx = Math.max(0, list.findIndex(y => y.path === x.path)); box.append(h('div', { class: 'bigwrap' }, h('img', { src: fileUrl(x.path), alt: x.name, title: '点开放大', onclick: () => openLightbox(list, idx) }), h('button', { class: 'icon-btn zoom', type: 'button', title: '放大看', 'aria-label': '放大', html: ICON.full, onclick: () => openLightbox(list, idx) }))); }
   else if (x.kind === 'video') box.append(h('video', { src: fileUrl(x.path), controls: true }));
   else if (x.kind === 'audio') box.append(h('audio', { src: fileUrl(x.path), controls: true, style: 'width:100%' }));
   a.append(box);
-  a.append(h('p', { class: 'path', style: 'margin-top:8px' }, x.path));
+  const entry = S.libUsage?.get(x.path);
+  if (entry) a.append(h('div', {class:'aux-sec'},
+    h('div', {class:'chips'}, ...libraryStatus(x.path).map(([label,tone])=>h('span',{class:'badge '+tone},label))),
+    entry.uses.length ? h('p', {class:'s wrap'}, '用于 ' + [...new Set(entry.uses)].join('、')) : null,
+    ...entry.candidates.map(c=>h('p',{class:'s t3'}, c.shot + ' · 候选审查 ' + c.review))));
+  a.append(h('p', { class: 'path wrap', style: 'margin-top:8px' }, x.path));
   if (x.prompt) a.append(h('div', { class: 'aux-sec' }, h('div', { class: 'k row' }, '提示词', h('button', { class: 'pill sm', type: 'button', onclick: () => copyText(x.prompt, '提示词已复制') }, '复制')), h('div', { class: 'prompt' }, x.prompt)));
   if (sib.length > 1) a.append(h('div', { class: 'aux-sec' }, h('div', { class: 'k' }, `同一个的 ${sib.length} 张`), h('div', { class: 'grid lib', style: 'grid-template-columns:repeat(3,1fr);gap:8px' }, ...sib.map(y => h('button', { class: 'pic', type: 'button', 'aria-selected': y.path === x.path ? 'true' : 'false', title: y.name, onclick: () => libSelect(y), ondblclick: () => openLightbox(sib, sib.indexOf(y)) }, h('img', { src: fileUrl(y.path), alt: y.name, loading: 'lazy' }), h('span', { class: 'cap' }, y.variant || y.name))))));
 }
@@ -2261,14 +2331,33 @@ $('#generationBtn').addEventListener('click', async () => {
   } catch(e) { jobs.textContent=e.message; }
 });
 
-$('#finishingBtn').addEventListener('click', async () => {
+$('#finishingBtn').addEventListener('click', () => openFinishing());
+
+function finishingSource(snapshot) {
+  if (snapshot.source === 'final') return 'Studio 初剪 · ' + snapshot.final.split('/').pop();
+  if (snapshot.source === 'draft') return 'Studio 工作草稿 · 修订 ' + snapshot.revision;
+  return '项目剪辑表';
+}
+
+async function openFinishing(draftId) {
   const dialog = h('dialog', {class:'review-dialog', 'aria-label':'剪映精修'});
   const content = h('div');
+  const steps = h('ol', {class:'handoff-steps','aria-label':'剪映交接步骤'});
   const feedback = h('p', {class:'s t3', role:'status'});
   const button = (label, onclick, extra={}) => h('button', {class:'pill sm', type:'button', onclick, ...extra}, label);
   const field = (label, control) => h('label', {}, label, control);
   let selection = 'current';
+  let selectedDraft = draftId;
+  let setupOpen;
   let busy = false;
+  let refreshRequest = 0;
+
+  function showStep(current) {
+    const labels = ['确认来源', '建草稿', '到剪映精修并导出', '回收复查'];
+    steps.replaceChildren(...labels.map((label, index)=>h('li', {class:'s',
+      'aria-current':current === index + 1 ? 'step' : null}, (index + 1) + ' · ' + label)));
+  }
+  showStep(1);
 
   async function act(action, data) {
     if (busy) return;
@@ -2276,7 +2365,11 @@ $('#finishingBtn').addEventListener('click', async () => {
     content.inert = true;
     feedback.textContent = '正在处理…';
     try {
-      await post('/api/finishing/' + action, data);
+      const result = await post('/api/finishing/' + action, data);
+      if (action === 'create' || action === 'revise') {
+        selectedDraft = result.id;
+        setupOpen = false;
+      }
       feedback.textContent = ({create:'草稿已准备',revise:'已保存新修订',publish:'已注册，打开剪映项目列表即可看到',receive:'已回收，请开始技术质检',scan:'技术质检已开始，请稍后刷新',review:'已记录成片复查'})[action];
       await refresh();
     } catch (error) {
@@ -2289,53 +2382,76 @@ $('#finishingBtn').addEventListener('click', async () => {
   }
 
   async function refresh() {
+    const requestId = ++refreshRequest;
     const state = await api('/api/finishing');
+    if (requestId !== refreshRequest || !dialog.open) return;
+    const record = state.items.find(item=>item.id===selectedDraft) || state.items[0];
+    selectedDraft = record?.id;
     const source = h('select', {'aria-label':'初剪来源'});
     const choices = [['current','正在剪的版本'],['draft','已保存的初剪草稿'],['legacy','项目剪辑表'],
       ...state.finals.map(final=>[final, '初剪成片 · ' + final.split('/').pop()])];
     for (const [value, label] of choices) source.append(h('option', {value}, label));
     source.value = choices.some(([value])=>value===selection) ? selection : 'current';
     const summary = h('div');
+    const setup = h('details', {class:'task-card',open:setupOpen ?? !record},
+      h('summary', {}, '1–2 · 确认来源并新建草稿'),
+      h('p',{class:'s t3'},state.configured ? '先核对 Studio 初剪，再生成对应的可编辑草稿。' : '剪映草稿工具尚未配置。可查看已有交接与回收版。'),
+      h('label',{class:'handoff-version s'},'Studio 初剪来源',source),summary);
+    let previewRequest = 0;
     const preview = async () => {
+      const ticket = ++previewRequest;
       const value = source.value;
       selection = value;
+      showStep(1);
       summary.textContent = '正在检查时间线…';
       const request = value.startsWith('final/') ? {source:'final', final:value} : {source:value};
       try {
         const plan = await api('/api/finishing/preview?' + new URLSearchParams(request));
-        if (source.value !== value) return;
+        if (ticket !== previewRequest || !setup.isConnected || !setup.open) return;
         if (plan.unsupported.length) {
-          summary.replaceChildren(h('p',{class:'s'},'有暂不支持的效果，已停止转换。'), h('ul',{},...plan.unsupported.map(name=>h('li',{},name))));
+          summary.replaceChildren(h('p',{class:'s wrap'},finishingSource(plan)),
+            h('p',{class:'s'},'有暂不支持的效果，已停止转换。'), h('ul',{},...plan.unsupported.map(name=>h('li',{},name))));
           return;
         }
         const counts = ['video','audio','text'].map(kind=>plan.clips.filter(c=>c.kind===kind).length);
         const requestId = crypto.randomUUID().replaceAll('-', '');
+        showStep(state.configured ? 2 : 1);
         summary.replaceChildren(
+          h('p',{class:'s wrap'},'已确认来源 · ' + finishingSource(plan)),
           h('p',{class:'s t3'}, `${counts[0]} 镜 · ${counts[1]} 条独立音频 · ${counts[2]} 条字幕 · ${fmt(plan.duration_us / plan.timebase)} · ${plan.width}×${plan.height} · ${plan.fps} fps`),
-          button('生成可编辑草稿', ()=>act('create',{...request,signature:plan.signature,request_id:requestId}), {disabled:!state.configured}));
+          button('生成可编辑草稿', ()=>act('create',{...request,signature:plan.signature,request_id:requestId}),
+            {class:'pill primary',disabled:!state.configured}));
       } catch (error) {
-        if (source.value === value) summary.textContent = error.message;
+        if (ticket === previewRequest && setup.open) summary.textContent = error.message;
       }
     };
     source.onchange = preview;
-    content.replaceChildren(h('section', {class:'task-card'},
-      h('b',{},'从初剪生成草稿'),
-      h('p',{class:'s t3'},state.configured ? '保留切点、音量与可转换轨道。每次修订生成一份新草稿。' : '剪映草稿工具尚未配置。可继续查看已有交接与回收版。'),
-      source,summary));
-    for (const record of state.items) {
+    const versions = h('div');
+    const draft = h('div');
+    const draftStep = record => record.outputs.length ? 4 :
+      record.status === 'needs_reconciliation' && !record.native_path ? 2 : 3;
+    function drawRecord(record) {
       const parent = state.items.find(item=>item.id===record.parent_id);
       const status = {prepared:'草稿已准备',published:'已注册到剪映',needs_reconciliation:'待核对'}[record.status];
+      if (!setup.open) showStep(draftStep(record));
       const card = h('section',{class:'task-card'},
-        h('div',{class:'task-heading'},h('b',{},record.name),h('span',{class:'badge'},status)),
-        h('p',{class:'s t3'},parent ? '修订自 ' + parent.name : '来自 Studio 初剪'),
-        h('details',{},h('summary',{},'草稿包位置'), h('p',{class:'s path'},record.package)));
+        h('div',{class:'task-heading'},h('b',{},draftStep(record) === 2 ? '2 · 建草稿' : '3 · 到剪映精修并导出'),h('span',{class:'badge'},status)),
+        h('p',{class:'s wrap'},'剪映草稿 · ' + record.name),
+        h('p',{class:'s t3 wrap'},'来源 · ' + finishingSource(record.snapshot)),
+        parent ? h('p',{class:'xs t3 wrap'},'修订自 ' + parent.name) : null);
       if (record.status === 'prepared') {
-        card.append(h('p',{class:'s t3'},'发布前请保存并完全退出剪映。'),
-          button('发布到剪映',()=>act('publish',{id:record.id}),{disabled:!state.configured}));
+        card.append(h('p',{class:'s t3'},'保存并完全退出剪映，再发布这份草稿。'),
+          button('发布到剪映',()=>act('publish',{id:record.id}),{class:'pill primary',disabled:!state.configured}));
       }
       if (record.status === 'needs_reconciliation') {
         card.append(h('p',{class:'s'},'请先核对草稿包和剪映项目列表，避免重复注册。'));
       }
+      if (record.status === 'published') {
+        const states = {same:'原生草稿文件与发布时一致',changed:'剪映中的草稿文件有变化。请在剪映查看具体修改。',missing:'找不到原生草稿文件，请核对剪映项目列表。'};
+        card.append(h('p',{class:'s'},'在剪映项目列表打开上面这份草稿，精修后导出 MP4 或 MOV。'),
+          h('p',{class:'xs t3'},states[record.native_state]));
+      }
+      card.append(h('details',{},h('summary',{},'草稿包位置'), h('p',{class:'s path wrap'},record.package)));
       if (state.configured && ['prepared','published'].includes(record.status)) {
         const clips = record.clips.filter(c=>c.kind === 'video' || c.kind === 'audio');
         const media = h('select',{'aria-label':'要调整的片段'},...clips.map(c=>
@@ -2363,15 +2479,22 @@ $('#finishingBtn').addEventListener('click', async () => {
             act('revise',{id:record.id,request_id:requestId,operations});
           })));
       }
+      const review = h('section', {class:'task-card'}, h('b',{},'4 · 回收复查'));
       if (record.status === 'published') {
-        const states = {same:'原生草稿文件与发布时一致',changed:'剪映中的草稿文件有变化。请在剪映查看具体修改。',missing:'找不到原生草稿文件，请核对剪映项目列表。'};
         const input = h('input',{type:'text',class:'review-note','aria-label':'剪映导出的 MP4 或 MOV 路径',placeholder:'粘贴 MP4 或 MOV 的绝对路径'});
         const confirmed = h('input',{type:'checkbox'});
-        card.append(h('p',{class:'s t3'},states[record.native_state]),
-          h('details',{},h('summary',{},'回收剪映导出的成片'),
-            h('p',{class:'s t3'},'可用目录 · ' + state.import_roots.join(' · ')),
-            input, h('p',{class:'s'},h('label',{},confirmed,' 这是所选剪映草稿实际导出的影片')),
-            button('回收为新成片',()=>act('receive',{id:record.id,source:input.value.trim(),confirm_export:confirmed.checked}))));
+        const receive = button('回收为新成片',()=>act('receive',{id:record.id,source:input.value.trim(),confirm_export:confirmed.checked}),
+          {class:'pill primary',disabled:true});
+        const allowReceive = () => {receive.disabled = !input.value.trim() || !confirmed.checked;};
+        input.addEventListener('input',allowReceive);
+        confirmed.addEventListener('change',allowReceive);
+        const fields = h('div',{},
+          h('p',{class:'s t3'},'导出结束后填写文件路径，回收为这份草稿的成片。'),
+          input,h('p',{class:'s'},h('label',{},confirmed,' 已确认这份影片从上方剪映草稿导出')),receive,
+          h('details',{},h('summary',{},'可用导入目录'),h('p',{class:'s t3 wrap'},state.import_roots.join(' · '))));
+        review.append(record.outputs.length ? h('details',{},h('summary',{},'回收另一份导出'),fields) : fields);
+      } else {
+        review.append(h('p',{class:'s t3'},'请先完成剪映导出。'));
       }
       for (const film of record.outputs) {
         const last = film.reviews.at(-1);
@@ -2379,32 +2502,56 @@ $('#finishingBtn').addEventListener('click', async () => {
         const reviewText = film.stale ? '文件内容已变化' : last ? (last.status==='approved' ? '全片通过' : '退回精修') : '待全片复查';
         const statusText = report ? ({running:'检查中',completed:'解码通过',failed:'检测失败',interrupted:'检测中断'})[report.status] : '待技术质检';
         const section = h('section',{class:'quality-section'},
-          h('h3',{},film.source_name + ' · ' + reviewText),
+          h('h3',{class:'wrap'},'回收版 · ' + film.source_name),
+          h('p',{class:'s wrap'},reviewText + ' · ' + film.at),
           h('p',{class:'s t3'},`${film.metadata.width}×${film.metadata.height} · ${fmt(film.metadata.duration)} · ${statusText} · 按全片时间码复查`),
           h('a',{href:fileUrl(film.final),target:'_blank',rel:'noopener',class:'pill sm'},'播放回收版'));
         if (report?.events.length) section.append(h('ul',{class:'s'},...report.events.map(e=>h('li',{},e.type+' · '+fmt(e.t)))));
         if (report?.error) section.append(h('p',{class:'s'},report.error));
-        if (!film.stale && report?.status !== 'running') section.append(button('技术质检',()=>act('scan',{final:film.final})));
+        if (!film.stale && report?.status !== 'running') section.append(button(report ? '重新技术质检' : '开始技术质检',
+          ()=>act('scan',{final:film.final}),{class:report?.status === 'completed' ? 'pill sm' : 'pill primary'}));
+        if (report?.status === 'running') section.append(h('p',{class:'s t3'},'质检结束后，点「刷新状态」查看结果。'));
         if (!film.stale && report?.status === 'completed') {
           const note = h('textarea',{class:'review-note',rows:2,placeholder:'看完后记录画面、字幕、声音或需返修的时间码','aria-label':'全片复查结论'});
           const decision = status=>act('review',{final:film.final,film_hash:film.film_hash,scan_id:report.id,status,note:note.value});
           section.append(note,h('div',{class:'review-actions'},button('全片通过',()=>decision('approved')),button('退回精修',()=>decision('rejected'))));
         }
         if (last) section.append(h('p',{class:'s'},last.note));
-        card.append(section);
+        review.append(section);
       }
-      content.append(card);
+      draft.replaceChildren(card,review);
     }
-    await preview();
+    if (record) {
+      const version = h('select',{'aria-label':'剪映草稿版本'},...state.items.map(item=>h('option',{value:item.id},
+        item.name + ' · ' + item.at)));
+      version.value = selectedDraft;
+      version.onchange = () => {
+        selectedDraft = version.value;
+        setup.open = false;
+        drawRecord(state.items.find(item=>item.id===selectedDraft));
+      };
+      versions.append(h('label',{class:'handoff-version s'},'剪映草稿版本',version),draft);
+      drawRecord(record);
+    }
+    content.replaceChildren(setup,versions);
+    let wasOpen = setup.open;
+    setup.addEventListener('toggle',()=>{
+      if (!setup.isConnected || wasOpen === setup.open) return;
+      wasOpen = setupOpen = setup.open;
+      if (setup.open) preview();
+      else if (record) showStep(draftStep(state.items.find(item=>item.id===selectedDraft)));
+      else showStep(1);
+    });
+    if (setup.open) await preview();
   }
   dialog.append(h('div',{class:'review-actions'},h('b',{},'剪映精修'),
-    button('刷新状态',async()=>{try {await refresh();}catch(error){feedback.textContent=error.message;}}),
-    button('关闭',()=>dialog.close())),feedback,content);
+    button('刷新状态',async()=>{if (!busy) try {await refresh();}catch(error){feedback.textContent=error.message;}}),
+    button('关闭',()=>dialog.close())),steps,feedback,content);
   dialog.addEventListener('close',()=>dialog.remove());
   document.body.append(dialog);
   dialog.showModal();
   try {await refresh();} catch(error) {feedback.textContent=error.message;}
-});
+}
 
 function taskState(kind, status, job) {
   const cycle = job.cycles?.at(-1);
@@ -2496,7 +2643,7 @@ $('#episodeBtn').addEventListener('click', async () => {
         if (['paused','interrupted','failed','cancelled','needs_decision'].includes(run.status)) actions.append(button('续跑原任务',()=>submit('resume',{id:run.id})));
         if (['paused','interrupted','completed','needs_decision','waiting_review'].includes(run.status)) actions.append(button('按新输入续做',()=>submit('resume',{id:run.id,refresh:true})));
         if (run.final || c.rough) actions.append(h('a',{class:'pill sm',href:fileUrl(run.final || c.rough.path),target:'_blank',rel:'noopener'},run.final?'播放交付片':'播放初剪'));
-        if (c.handoff) actions.append(button('打开剪映精修',()=>{dialog.close();$('#finishingBtn').click();}));
+        if (c.handoff) actions.append(button('打开剪映精修',()=>{dialog.close();openFinishing(c.handoff);}));
         if (run.report) actions.append(h('a',{class:'pill sm',href:'/api/episode/report?'+new URLSearchParams({id:run.id,cycle:c.number}),target:'_blank',rel:'noopener'},'查看当前报告'));
         const reports=h('div',{class:'review-actions'});
         for (const revision of run.cycles) {
