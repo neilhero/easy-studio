@@ -31,7 +31,7 @@ READS = {
     'finishing.list':'列出剪映交接、修订关系、原生变化与回收片验收',
     'finishing.preview':'source=current/draft/final/legacy；final 选填；预检微秒时间线、素材和不支持效果',
 
-    'generation.providers':'查看 LibTV 宿主桥与本机 RIFE 可用能力',
+    'generation.providers':'查看 Phosphene 本地、LibTV 宿主桥与 RIFE 可用能力',
     'generation.list':'查询返修任务、预算预留、已知实扣及候选',
     'generation.get':'job_id，查询返修任务与提供方原任务身份',
     'automation.workspace':'当前镜头与候选：当前使用素材、入出点、备用数量和可选工作版本',
@@ -65,7 +65,8 @@ WRITES = {
     'finishing.scan':'final；检查回收成片的解码、黑静帧与声音',
     'finishing.review':'final/film_hash/scan_id/status=approved|rejected/note；记录实看片复查',
 
-    'generation.submit':'segment/provider/issue/preserve/evidence/max_attempts；LibTV另填libtv_project/model/prompt/params/references/watermark/max_credits/quoted_credits/confirm_spend；resume_task_id 仅回收已有任务',
+    'generation.resume':'job_id，继续查询和回收已有 Phosphene 任务，不重新生成',
+    'generation.submit':'segment/provider/issue/preserve；phosphene 填 first_frame/prompt/seconds/seed，支持尚未入片镜头；LibTV另填libtv_project/model/prompt/params/references/watermark/max_credits/quoted_credits/confirm_spend；resume_task_id 仅回收已有任务',
     'generation.claim':'job_id/actor；认领 LibTV 当前步骤；未知受理仅 recover=true 后用同一请求恢复',
     'generation.record':'job_id/lease_token/outcome；登记真实原任务回执或授权交付下载',
     'generation.retry':'job_id/attempt；失败或候选退回后重试；LibTV再次给quoted_credits/confirm_spend',
@@ -223,7 +224,7 @@ def project(app):
         return {**app.api_project(),'api_version':API_VERSION,'project_id':db.execute("SELECT value FROM meta WHERE key='project_id'").fetchone()[0],
                 'revision':revision(app,db),'import_roots':[str(p) for p in getattr(app,'IMPORT_ROOTS',[])],
                 'task_counts':{s:sum(t['status']==s for t in tasks) for s in ('queued','running','waiting_review','waiting_host','needs_reconciliation','needs_decision','succeeded','failed','cancelled','interrupted')},
-                'operations':{'read':READS,'write':WRITES},'capabilities':{'quality_cancel':False,'transport':'stdio proxy to local authenticated HTTP','automatic_generation':bool(generation.local_config()),'generation_providers':generation.capabilities(),'automatic_review':{'host_bridge':True,'local_command_configured':bool(os.environ.get('STUDIO_REVIEW_COMMAND')),'asr_configured':bool(os.environ.get('STUDIO_ASR_PYTHON') and os.environ.get('STUDIO_ASR_MODEL'))}}}
+                'operations':{'read':READS,'write':WRITES},'capabilities':{'quality_cancel':False,'transport':'stdio proxy to local authenticated HTTP','automatic_generation':bool(generation.local_config()) or generation.phosphene.capability()['ready'],'generation_providers':generation.capabilities(),'automatic_review':{'host_bridge':True,'local_command_configured':bool(os.environ.get('STUDIO_REVIEW_COMMAND')),'asr_configured':bool(os.environ.get('STUDIO_ASR_PYTHON') and os.environ.get('STUDIO_ASR_MODEL'))}}}
 
 
 def dispatch(app,body):
@@ -326,6 +327,7 @@ def write_operation(app,db,op,args):
         return episode.ACTIONS[op.split('.',1)[1]](app,args)
     if op.startswith('finishing.'):
         return finishing.ACTIONS[op.split('.',1)[1]](app,args)
+    if op=='generation.resume':return generation.phosphene.resume(app,args.get('job_id'))
     if op=='generation.submit':
         return generation.submit(app,{**args,'segment':segment(db,args.get('segment'))})
     if op=='generation.claim':return generation.claim(app,args)

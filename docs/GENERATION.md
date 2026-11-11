@@ -17,3 +17,10 @@ Studio 保存请求与状态。连接 LibTV 的 Codex 宿主按以下步骤认�
 5. 只有已确认失败的外部尝试、本地失败/中断或已退回的候选可调用 `generation.retry`，传 `job_id`、当前 `attempt`，外部再次带报价与预算确认。未知扣费保留预留，已知实扣替换预留；累计占用达到上限会拒绝新尝试。预算约束的是 Studio 的派发，实际扣费以 LibTV 回执为准。
 
 `generation.get/list` 查询状态和当前候选；`generation.providers` 显示本机模型配置。实际看片后用进度页或 `review.mutate` 提交内容判断。过审后调用 `generation.apply`，传 `job_id` 与可选源入点 `in`，随后用同一 `job_id` 调用 `generation.export`。新版本的接缝和全片复核可继续使用 v0.7 的「检查当前剪辑」。
+
+
+## v1.1 Phosphene 本地生成
+
+配置 STUDIO_PHOSPHENE_URL 为本机 HTTP 地址，STUDIO_PHOSPHENE_OUTPUTS 为 Phosphene 成片目录后重启 Studio。单镜返修选择 Phosphene，填写项目内首帧、动作提示及 1—10 秒时长，使用本地 LTX 生成一条候选。新镜头先在进度中建立镜号，允许尚未进入时间轴。
+
+任务记录首帧指纹和原任务号，完成后核验时长、完整解码，并关联到该镜头候选。接口中断或重启后，generation.resume 按已保存原任务号查询和回收。提交回执未知时进入待核对，不自动重发。新镜头候选通过审片后，可在初剪编辑中添加。首版不包含 H3、自动采用或整集自动分派 Phosphene。

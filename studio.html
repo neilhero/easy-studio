@@ -2165,6 +2165,7 @@ $('#generationBtn').addEventListener('click', async () => {
   const form = h('div',{class:'form-grid surface'});
   const shot = h('select',{'aria-label':'返修镜头'});
   const provider = h('select',{'aria-label':'生成方式'},
+    h('option',{value:'phosphene'},'Phosphene 本地 · 图生视频'),
     h('option',{value:'rife'},'本机 RIFE · 补帧'),
     h('option',{value:'libtv'},'LibTV · 生成新画面'));
   const issue = h('textarea',{class:'textarea','aria-label':'要修什么',rows:2,placeholder:'例如：人物转头时画面卡顿'});
@@ -2189,7 +2190,12 @@ $('#generationBtn').addEventListener('click', async () => {
     h('section',{class:'review-box'}, h('b',{},'提交前核对积分'),
       h('div',{class:'form-grid'},field('本次预计积分',credits),field('本单积分上限',budget)),
       cost,h('label',{class:'s'},spend,'同意按本次报价预留积分')));
+  const localFrame=h('input',{'aria-label':'本地参考首帧',placeholder:'素材库/镜21首帧.png'});
+  const localPrompt=h('textarea',{class:'textarea','aria-label':'本地生成提示词',rows:3});
+  const localSeconds=h('input',{type:'number',min:1,max:10,value:6,'aria-label':'本地时长秒'});
+  const localFields=h('div',{hidden:true,class:'form-grid'},field('项目内首帧路径',localFrame,true),field('动作与台词提示词',localPrompt,true),field('时长（秒）',localSeconds));
   const hint = h('p',{class:'s t3'});
+  let phospheneReady=false;
   let available = false;
   let signature = '';
   let submitting = false;
@@ -2204,17 +2210,19 @@ $('#generationBtn').addEventListener('click', async () => {
       if (provider.value==='libtv') Object.assign(request,{libtv_project:canvas.value,model:model.value,prompt:prompt.value,
         params:params.value.trim()?JSON.parse(params.value):{},references:refs.value.trim()?{start_frame:[refs.value.trim()]}:{},
         max_credits:Number(budget.value),quoted_credits:Number(credits.value),watermark:watermark.value,confirm_spend:spend.checked});
+      if(provider.value==='phosphene') Object.assign(request,{first_frame:localFrame.value,prompt:localPrompt.value,seconds:Number(localSeconds.value),seed:21});
       const key = JSON.stringify(request);
       if (pendingRequest?.key !== key) pendingRequest = {key,id:crypto.randomUUID().replaceAll('-','')};
       await post('/api/generation',{...request,request_id:pendingRequest.id});
       pendingRequest = null;
-      toast(request.provider==='libtv'?'已排队，交给已连接 LibTV 的智能体处理':'本机模型已开始补帧','ok');
+      toast(request.provider==='libtv'?'已排队，交给已连接 LibTV 的智能体处理':request.provider==='phosphene'?'Phosphene 已开始生成':'本机模型已开始补帧','ok');
       await refresh();
     } catch(e) { toast(e.message,'bad'); }
     finally { submitting = false; controls(); }
   }},'提交单镜返修');
   function controls() {
-    const remote = provider.value==='libtv';
+    const remote = provider.value==='libtv', local=provider.value==='phosphene';
+    localFields.hidden=!local;
     external.hidden = !remote;
     const quote = credits.valueAsNumber, limit = budget.valueAsNumber;
     const valid = n => Number.isInteger(n) && n >= 1 && n <= 1000000;
@@ -2225,13 +2233,13 @@ $('#generationBtn').addEventListener('click', async () => {
       (valid(quote) && valid(limit) && quote > limit ? ' · 超出上限，无法提交' : '');
     spend.disabled = !budgetOK;
     start.disabled = submitting || !shot.value || !issue.value.trim() || !preserve.value.trim() ||
-      (remote ? !budgetOK || !setupOK || !spend.checked : !available);
-    hint.textContent = remote
+      (remote ? !budgetOK || !setupOK || !spend.checked : local ? !phospheneReady || !localFrame.value.trim() || !localPrompt.value.trim() : !available);
+    hint.textContent = local ? 'Phosphene 逐条生成，新镜头先进入候选库，审片后可在初剪编辑添加。' : remote
       ? '按 LibTV 报价填预计积分，智能体会在授权范围内提交和回收。'
       : available ? '本机补帧：0 平台积分，保留原速度与原声。' : '当前本机 RIFE 服务未配置。';
   }
   provider.addEventListener('change',()=>{spend.checked=false;controls();});
-  [shot,issue,preserve,canvas,model,prompt,credits,budget,spend].forEach(input=>input.addEventListener('input',()=>{
+  [shot,issue,preserve,canvas,model,prompt,credits,budget,spend,localFrame,localPrompt,localSeconds].forEach(input=>input.addEventListener('input',()=>{
     if (input===credits || input===budget) spend.checked=false;
     controls();
   }));
@@ -2247,24 +2255,26 @@ $('#generationBtn').addEventListener('click', async () => {
   }},label);
   async function refresh() {
     const data=await api('/api/generation');
+    phospheneReady=!!data.providers.phosphene?.ready; controls();
     if (available !== data.providers.rife.ready) { available=data.providers.rife.ready; controls(); }
     const current=JSON.stringify(data.items);
     if (current===signature) return;
     signature=current;
     jobs.replaceChildren(...data.items.map(j=>{
       const a=j.attempts.at(-1);
-      const card=h('div',{class:'task-card'},h('div',{class:'task-heading'},h('b',{},j.segment+' · '+(j.provider==='rife'?'本机 RIFE':'LibTV')),
+      const card=h('div',{class:'task-card'},h('div',{class:'task-heading'},h('b',{},j.segment+' · '+({rife:'本机 RIFE',phosphene:'Phosphene 本地',libtv:'LibTV'}[j.provider])),
         h('span',{class:'badge'},statuses[j.status]||j.status)),
         h('p',{class:'s wrap'},'要修：'+j.issue),
         h('p',{class:'s t3 wrap'},'保留：'+j.preserve+(j.evidence?' · 问题位置或证据：'+j.evidence:'')),
         h('p',{class:'s wrap'},j.stage+(j.error?' · '+j.error:'')),
-        h('p',{class:'s t3'},j.provider==='rife'
+        h('p',{class:'s t3'},j.provider!=='libtv'
           ? `第 ${a.number}/${j.max_attempts} 次${a.elapsed!=null?' · '+a.elapsed+' 秒':''}`
           : `第 ${a.number}/${j.max_attempts} 次 · 已占用 ${j.budget_used}/${j.max_credits} 积分 · 本次预留 ${a.reserved} · 实扣 ${a.credits ?? '未知'}`));
       const buttons=h('div',{class:'review-actions'});
       if (j.provider==='libtv' && j.phase!=='done') {
         buttons.append(action('复制给 Codex',()=>copyText('请推进 Easy Studio 的 LibTV 返修任务 '+j.id,'已复制返修任务')));
       }
+      if(j.provider==='phosphene' && ['failed','interrupted','needs_reconciliation'].includes(j.status)) buttons.append(action('回收原任务',()=>post('/api/generation/resume',{job_id:j.id})));
       if (j.output) {
         buttons.append(h('a',{href:fileUrl(j.output),class:'pill sm',target:'_blank',rel:'noopener'},'看片候选'));
         card.append(h('p',{class:'s'},'候选审查 · '+({approved:'通过',rejected:'退回',pending:'待审'})[j.review_status]));
@@ -2277,7 +2287,7 @@ $('#generationBtn').addEventListener('click', async () => {
                 fingerprint:j.output_hash,status,note});
             }));
           }
-          if (j.review_status==='approved') {
+          if (j.review_status==='approved' && j.provider!=='phosphene') {
             const inPoint=h('input',{type:'number',min:0,step:0.01,value:0,'aria-label':'候选入点秒'});
             buttons.append(h('label',{class:'s'},'候选入点（秒）',inPoint),action('等长替换此镜',async()=>{
               await post('/api/generation/apply',{job_id:j.id,in:Number(inPoint.value)});
@@ -2314,16 +2324,16 @@ $('#generationBtn').addEventListener('click', async () => {
   }
   dialog.append(h('div',{class:'review-actions'},h('b',{},'模型生成与单镜返修'),
     h('button',{class:'pill sm',onclick:()=>dialog.close()},'关闭')),
-    h('p',{class:'s t3'},'先生成该镜的新候选，看片通过后再等长替换。导出会生成新的成片版本。'),
+    h('p',{class:'s t3'},'生成后先进入该镜候选库。已有镜头可审片后等长替换，新镜头可在初剪编辑中添加。'),
     form,h('div',{class:'form-grid'},field('生成方式',provider),field('最多尝试次数',attempts)),
-    external,hint,h('div',{class:'review-actions'},start),jobs);
+    external,localFields,hint,h('div',{class:'review-actions'},start),jobs);
   document.body.append(dialog);
   dialog.showModal();
   const timer=setInterval(()=>refresh().catch(()=>{}),3500);
   dialog.addEventListener('close',()=>{clearInterval(timer);dialog.remove();});
   try {
     const data=await api('/api/workspace');
-    for (const row of data.shots.filter(row=>row.uses.length===1)) shot.append(h('option',{value:row.id},row.id+' · '+row.scene));
+    for (const row of data.shots) shot.append(h('option',{value:row.id},row.id+' · '+row.scene));
     if ([...shot.options].some(option => option.value === S.selSeg?.id) && S.view === 'progress') shot.value = S.selSeg.id;
     await refresh();
     controls();

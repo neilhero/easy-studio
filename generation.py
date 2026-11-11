@@ -13,6 +13,7 @@ import uuid
 
 import editing
 import workspace
+import phosphene
 
 BASE = '反馈/生成返修'
 ACTIVE = set()
@@ -30,6 +31,7 @@ def local_config():
 
 def capabilities():
     return {
+        'phosphene': phosphene.capability(),
         'libtv': {'transport': 'host_mcp', 'modes': ['text-to-video', 'reference-to-video'], 'credits': True},
         'rife': {'transport': 'local_worker', 'model': 'RIFE 4.6', 'ready': bool(local_config()),
                  'modes': ['interpolate-2x'], 'source': 'current_clip', 'max_seconds': 12,
@@ -50,6 +52,8 @@ def read(app, job_id):
     job = json.loads(path.read_text())
     if job['provider'] == 'rife' and job['status'] == 'running' and job_id not in ACTIVE:
         job.update(status='interrupted', error='本地推理中断，可按原镜头重试')
+    if job['provider'] == 'phosphene' and job['status'] in ('running', 'queued') and job_id not in phosphene.ACTIVE:
+        job.update(status='interrupted', error='服务已重启，请用原 Phosphene 任务号继续回收')
     lease = job.get('lease')
     if lease and lease['until'] < time.time():
         if lease['phase'] == 'submit':
@@ -109,7 +113,7 @@ def attempt(job, quoted_credits):
         raise ValueError('返修预算或重试次数已用完')
     number = len(job['attempts']) + 1
     entry = {'number': number, 'key': f"easy-repair-{job['id']}-{number}", 'reserved': quoted_credits,
-             'credits': 0 if job['provider'] == 'rife' else None,
+             'credits': 0 if job['provider'] in ('rife','phosphene') else None,
              'task_id': None, 'state': 'queued', 'started': time.time()}
     job['attempts'].append(entry)
     job.update(status='queued', phase='submit', stage='等待提交', lease=None, error='', output=None,
@@ -127,6 +131,8 @@ def submit(app, body, *, owner=None):
         if previous['original_request'] != body:
             raise ValueError('同一请求编号不能用于不同返修')
         return public(previous)
+    if body.get('provider') == 'phosphene':
+        return phosphene.submit(app, body)
     provider = body.get('provider')
     if provider not in ('rife', 'libtv'):
         raise ValueError('请选择 RIFE 或 LibTV')
@@ -456,6 +462,8 @@ def apply(app, body):
         job.pop('apply_pending')
         save(app, job)
         return public(job)
+    if job.get('base') is None:
+        raise ValueError('这是新镜头候选，请在初剪编辑中添加到时间轴')
     plan = workspace.source(app)
     if plan['signature'] != job['base']['signature'] or plan['draft_revision'] != job['base']['revision']:
         raise ValueError('原剪辑已变化，不能直接采用这次返修')

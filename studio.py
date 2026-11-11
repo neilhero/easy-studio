@@ -962,6 +962,8 @@ class H(BaseHTTPRequestHandler):
                 action = finishing.ACTIONS.get(u.path.rsplit("/", 1)[-1])
                 if action:
                     return self._json(action(sys.modules[__name__], self._body()))
+            if u.path == "/api/generation/resume":
+                return self._json(generation.phosphene.resume(sys.modules[__name__],self._body().get("job_id")))
             if u.path == "/api/generation":
                 return self._json(generation.submit(sys.modules[__name__],self._body()))
             if u.path == "/api/generation/retry":
