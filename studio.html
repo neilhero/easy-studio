@@ -992,6 +992,44 @@ details.rec[open] > summary { margin-bottom: 8px; }
   .quality-fields { grid-template-columns:minmax(0,1fr); }
   .review-box, .task-card, .quality-section, .form-grid.surface { padding:12px; }
 }
+/* 创作工具导航与流程入口 */
+.creation-divider { height:1px; background:var(--line); margin:10px 8px; flex:none; align-self:stretch; }
+.creation-nav { display:flex; flex-direction:column; gap:3px; }
+.creation-nav .creation-number { display:grid; place-items:center; width:22px; height:22px; border-radius:7px; background:var(--island-3); color:var(--t2); font-size:11px; font-weight:650; font-variant-numeric:tabular-nums; flex:none; }
+.creation-nav [aria-current] .creation-number { background:var(--acc); color:var(--island); }
+.creation-sub { display:none; margin:2px 4px 6px 20px; padding-left:8px; border-left:1px solid var(--line); }
+.shell.nav-open .creation-sub:not([hidden]) { display:grid; gap:2px; }
+.nav .creation-sub .i { min-height:30px; height:auto; padding:7px 5px; border-radius:7px; }
+.nav .creation-sub .i .ic { display:none; }
+.nav .creation-sub .i .l { font-size:11px; white-space:normal; line-height:1.5; }
+.shell.creation-mode { grid-template-columns:var(--nav-w) minmax(0,1fr); }
+.shell.creation-mode .aux, .shell.creation-mode #drawerBtn { display:none; }
+.creation-roadmap { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+.creation-stage { display:grid; gap:9px; padding:16px; background:var(--island); border:1px solid var(--line); border-radius:var(--r-panel); text-align:left; min-width:0; cursor:pointer; }
+.creation-stage[aria-pressed="true"] { background:var(--acc-soft); border-color:var(--acc); }
+.creation-stage .creation-number { display:grid; place-items:center; width:28px; height:28px; border-radius:9px; background:var(--island-3); color:var(--t2); font-size:12px; font-weight:650; }
+.creation-stage[aria-pressed="true"] .creation-number { background:var(--acc); color:var(--island); }
+.creation-stage b { font-size:13px; }
+.creation-stage small { font-size:11px; color:var(--t3); }
+.creation-panel, .creation-card { border:1px solid var(--line); border-radius:var(--r-panel); background:var(--island); padding:20px; margin-block:14px; min-width:0; }
+.creation-panel h2, .creation-card h2 { font-size:17px; margin-bottom:10px; }
+.creation-panel p, .creation-card p { margin-block:8px; }
+.creation-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.creation-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:14px; }
+.creation-grid .creation-card { margin:0; }
+.creation-check { border-top:1px solid var(--line); padding-top:12px; margin-top:16px; }
+@media (max-width:1000px) { .creation-roadmap { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:720px) {
+  .nav .workspace-divider { display:none; }
+  .nav .nav-tools.is-open { display:block; max-height:min(72dvh,600px); }
+  .nav .nav-tools .nav-label { display:block; }
+  .nav .creation-sub:not([hidden]) { display:grid; gap:2px; }
+  .nav .creation-sub .i { min-height:36px; height:auto; }
+  .shell.creation-mode { grid-template-columns:minmax(0,1fr); }
+  .creation-columns { grid-template-columns:minmax(0,1fr); }
+  .creation-panel, .creation-card { padding:16px; }
+}
+@media (max-width:400px) { .creation-roadmap { gap:8px; } .creation-stage { padding:12px; } }
 </style>
 </head>
 <body>
@@ -1002,15 +1040,18 @@ details.rec[open] > summary { margin-bottom: 8px; }
     <button class="i" type="button" data-view="watch" aria-current="page" title="看片"><span class="ic"></span><span class="l">看片</span></button>
     <button class="i" type="button" data-view="progress" title="进度"><span class="ic"></span><span class="l">进度</span></button>
     <button class="i" type="button" data-view="library" title="素材库"><span class="ic"></span><span class="l">素材库</span></button>
-    <div class="nav-label">制作工具</div>
-    <button class="i" type="button" id="navMore" title="更多制作工具" aria-expanded="false" aria-controls="navTools"><span class="ic"></span><span class="l">更多</span></button>
+    <div class="creation-divider workspace-divider"></div>
+    <div class="nav-label">创作工具</div>
+    <button class="i" type="button" id="navMore" title="创作工具" aria-expanded="false" aria-controls="navTools"><span class="ic"></span><span class="l">创作工具</span></button>
     <div class="nav-tools" id="navTools">
+      <div id="creationNav" class="creation-nav">
       <button class="i" type="button" id="qualityBtn" title="连戏与质检"><span class="ic"></span><span class="l">质检</span></button>
       <button class="i" type="button" id="automationBtn" title="镜头与候选"><span class="ic"></span><span class="l">镜头与候选</span></button>
       <button class="i" type="button" id="generationBtn" title="模型生成与单镜返修"><span class="ic"></span><span class="l">单镜返修</span></button>
       <button class="i" type="button" id="finishingBtn" title="剪映精修"><span class="ic"></span><span class="l">剪映精修</span></button>
       <button class="i" type="button" id="episodeBtn" title="整集制作"><span class="ic"></span><span class="l">整集制作</span></button>
       <button class="i" type="button" id="tasksBtn" title="统一任务"><span class="ic"></span><span class="l">任务</span></button>
+      </div>
       <button class="i" type="button" id="mobileTheme" title="切换深浅色"><span class="ic"></span><span class="l">深浅外观</span></button>
     </div>
     <span class="sp"></span>
@@ -1022,6 +1063,7 @@ details.rec[open] > summary { margin-bottom: 8px; }
     <section class="view" id="v-watch"></section>
     <section class="view" id="v-progress" hidden></section>
     <section class="view" id="v-library" hidden></section>
+    <section class="view" id="v-creation" hidden></section>
     <div class="app-version" id="appVersion" aria-label="Easy Studio程序版本">Easy Studio</div>
   </main>
   <aside class="island aux" id="aux">
@@ -1127,7 +1169,7 @@ const shell = $('#shell');
 const UI = { navOpen: true, auxW: 360, auxOpen: true };
 try { Object.assign(UI, JSON.parse(localStorage.getItem('studio:ui') || '{}')); } catch (e) {}
 function saveUI() { try { localStorage.setItem('studio:ui', JSON.stringify(UI)); } catch (e) {} }
-const navW = () => UI.navOpen ? 168 : 60;
+const navW = () => UI.navOpen ? 210 : 60;
 const auxMax = () => Math.max(300, Math.min(760, innerWidth - navW() - 128 - 480));
 const isNarrow = () => innerWidth <= 960 || innerWidth - navW() - UI.auxW - 128 < 480;
 function applyUI() {
@@ -1147,14 +1189,161 @@ addEventListener('resize', applyUI);
 shell.addEventListener('transitionend', e => { if (e.target === shell) applyUI(); });
 function switchView(name) {
   S.view = name;
+  $('#v-creation').hidden = name !== 'creation';
+  shell.classList.toggle('creation-mode', name === 'creation');
   for (const v of ['watch', 'progress', 'library']) { $('#v-' + v).hidden = v !== name; $('#a-' + v).hidden = v !== name; }
   $$('.nav .i[data-view]').forEach(b => b.dataset.view === name ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   if (name === 'library') renderLibrary();
+  $$('#creationNav [data-create]').forEach(button => {
+    if (name === 'creation' && button.dataset.create === creationSelection) button.setAttribute('aria-current','page');
+    else button.removeAttribute('aria-current');
+  });
   if (name !== 'watch') { $('#video')?.pause(); }
   applyUI();
   if (name === 'progress') return renderProgress();
 }
 $$('.nav .i[data-view]').forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)));
+
+const creationStages = [
+  {name:'剧本与场次', current:'查看和维护项目的分段内容。', actions:[['查看分段内容','progress']],
+    missing:'自动整理客户要求、编写剧本与场次、检查人物动机和剧情逻辑。', check:'核对故事、必需信息、台词和预计片长。'},
+  {name:'视听筹备', current:'人物、服装、道具与场景参考卡，镜头连戏要求。', actions:[['参考卡与连戏要求','quality']],
+    missing:'统一角色多视图、声线和风格档案，自动生成参考并锁定版本。', check:'确认人物、场景和整体风格，保存认可的参考。'},
+  {name:'分镜与预演', current:'镜号、分段内容、镜头时长与预期台词。', actions:[['分段表与镜号','progress'],['按镜填写预期台词','inspect']],
+    missing:'自动设计机位、景别、动作与轴线，制作带临时对白的动态预演。', check:'确认叙事、镜头接法、动作与台词时长。'},
+  {name:'镜头制作', current:'Phosphene 本地 LTX、LibTV 宿主桥、新镜号与候选回收。', actions:[['Phosphene 本地生成','phosphene'],['LibTV 镜头生成','libtv']],
+    missing:'整集自动分派 Phosphene、按镜头选择平台、试拍后批量调度。', check:'核对候选归属、时长、文件完整性与原任务回执。'},
+  {name:'审片与选片', current:'连戏与质检、镜头与候选、单镜返修，审片中的 Whisper 转写。', actions:[['连戏与质检','qualityBtn'],['镜头与候选','automationBtn'],['单镜返修','generationBtn']],
+    missing:'持续观看和试听的自动审片器，人物、道具、表演、台词的一致性判断。', check:'记录实际检查范围、问题时间码和可用区间，证据不足时补审。'},
+  {name:'初剪与复查', current:'自动初剪建议、初剪编辑、时间线、接缝与全片复查。', actions:[['从候选重新初剪','rebuild'],['初剪编辑','editor'],['检查当前剪辑','inspect'],['返修问题','issues']],
+    missing:'按故事目的选择切点，自动调整动作、对白和反应镜头的节奏。', check:'连续看片，复查故事、节奏、动作接点与声画同步。'},
+  {name:'精修与声音', current:'剪映草稿交接、字幕与音量修订、Real-ESRGAN 超分、RIFE 补帧。', actions:[['剪映精修','finishingBtn'],['超分工作台','upscale'],['RIFE 本机补帧','rife']],
+    missing:'配音、固定声线、音乐音效、混音、调色，以及剪映原生精修与导出的自动执行。', check:'核对字幕、人声、口型、风格与画面处理效果。'},
+  {name:'成片确认与导出', current:'导出新版本、剪映成片回收、技术质检和全片复查。', actions:[['初剪导出与记录','editor'],['剪映回收与复查','finishing'],['看片与版本对照','watch'],['返修与复核记录','issues']],
+    missing:'客户要求到成片时间码的逐项核对、多规格交付和客户批准记录。', check:'对照客户要求检查具体成片版本，记录结论和未决问题。'}
+];
+const localCreationTools = [
+  {name:'视频本地生成',tool:'Phosphene · LTX 图生视频',detail:'首帧、动作提示和时长生成镜头候选，回收后审看。',action:'phosphene'},
+  {name:'视频超分',tool:'Real-ESRGAN',detail:'批量超分、分辨率设置、队列与原片对照。',action:'upscale'},
+  {name:'视频补帧',tool:'RIFE',detail:'对指定镜头补帧，保留原速度与原声。',action:'rife'},
+  {name:'语音转写与台词核对',tool:'Whisper',detail:'由自动审片调用本地转写，辅助核对预期台词。',action:'inspect'},
+  {name:'视频精剪与导出',tool:'剪映',detail:'生成可编辑草稿、发布到剪映、回收实际导出并复查。',action:'finishing'}
+];
+let creationSelection = 'stage-4';
+const creationSubmenus = new Map();
+function runCreationAction(action) {
+  const handlers = {
+    progress:() => switchView('progress'), watch:() => switchView('watch'),
+    quality:() => openQuality(), editor:openEditor, upscale:openUpscale, issues:openIssues,
+    phosphene:() => openGeneration('phosphene'), rife:() => openGeneration('rife'),
+    libtv:() => openGeneration('libtv'), inspect:() => openAutomation('inspect'),
+    rebuild:() => openAutomation('rebuild'), finishing:() => openFinishing()
+  };
+  if (handlers[action]) handlers[action]();
+  else document.getElementById(action)?.click();
+}
+function creationActionButton(label, action, className = 'pill sm') {
+  return h('button', {type:'button',class:className,onclick:() => runCreationAction(action)},label);
+}
+function showCreation(selection) {
+  creationSelection = selection;
+  creationSubmenus.forEach((menu,key) => {menu.hidden = key !== selection;});
+  switchView('creation');
+  renderCreation();
+}
+function buildCreationNav() {
+  const container = $('#creationNav');
+  const originals = new Map($$('button',container).map(button => [button.id,button]));
+  container.replaceChildren();
+  function group(key,label,icon,actions) {
+    const submenu = h('div',{class:'creation-sub',hidden:true,id:'creation-sub-'+key});
+    const button = h('button',{class:'i',type:'button','data-create':key,title:label,
+      'aria-controls':submenu.id,onclick:() => showCreation(key)},
+      h('span',{class:'ic'},typeof icon === 'number'
+        ? h('span',{class:'creation-number'},icon) : h('span',{html:ICON[icon]})),h('span',{class:'l'},label));
+    for (const [name,action] of actions) {
+      const entry = originals.get(action) || creationActionButton(name,action,'i');
+      if (!originals.has(action)) entry.replaceChildren(h('span',{class:'l'},name));
+      submenu.append(entry);
+    }
+    container.append(button,submenu);
+    creationSubmenus.set(key,submenu);
+  }
+  group('local','本地工具','grid',localCreationTools.map(tool=>[tool.name,tool.action]));
+  group('online','联网平台','layers',[['LibTV 镜头生成','libtv']]);
+  container.append(h('div',{class:'creation-divider'}),h('div',{class:'nav-label'},'创作流程'));
+  creationStages.forEach((stage,index) => group('stage-'+index,stage.name,index+1,stage.actions));
+  container.append(h('div',{class:'creation-divider'}));
+  group('control','创作总控','checklist',[['整集制作','episodeBtn'],['任务','tasksBtn']]);
+}
+buildCreationNav();
+
+let creationRequest = 0;
+async function renderCreation() {
+  const request = ++creationRequest, selection = creationSelection;
+  const view = $('#v-creation');
+  const stageIndex = selection.startsWith('stage-') ? Number(selection.slice(6)) : null;
+  const titles = {local:'本地工具',online:'联网平台',control:'创作总控'};
+  const title = stageIndex === null ? titles[selection] : creationStages[stageIndex].name;
+  const head = h('div',{class:'head'},h('div',{class:'title-row'},h('span',{class:'workspace-label'},'创作工具'),h('h1',{class:'title'},title)));
+  view.replaceChildren(head);
+  if (stageIndex !== null) {
+    view.append(h('div',{class:'creation-roadmap','aria-label':'八步创作流程'},...creationStages.map((stage,index) =>
+      h('button',{type:'button',class:'creation-stage','aria-pressed':String(stageIndex===index),onclick:()=>showCreation('stage-'+index)},
+        h('span',{class:'creation-number'},index+1),h('b',{},stage.name),
+        h('small',{},index === 0 ? '待补主要创作能力' : '已有部分能力')))));
+    const stage = creationStages[stageIndex];
+    view.append(h('section',{class:'creation-panel'},
+      h('h2',{},(stageIndex+1)+' · '+stage.name),h('p',{class:'s t2'},stage.current),
+      h('div',{class:'review-actions'},...stage.actions.map(([name,action])=>creationActionButton(name,action))),
+      h('div',{class:'creation-check'},h('b',{class:'s'},'阶段检查'),h('p',{class:'s t2'},stage.check)),
+      h('details',{},h('summary',{class:'s'},'后续补齐的自动化能力'),h('p',{class:'s t3'},stage.missing))));
+    view.append(h('section',{class:'creation-card'},
+      h('h2',{},'客户要求与验收清单'),h('span',{class:'badge neutral'},'待补齐'),
+      h('p',{class:'s t3'},'后续将故事目标、参考样片、必需内容、交付规格、预算和时限关联到每一步检查。')));
+    return;
+  }
+  if (selection === 'local') {
+    view.append(h('p',{class:'s t3',style:'margin-bottom:18px'},'按用途选择本地工具。具体配置与执行状态可在对应工作台查看。'),
+      h('div',{class:'creation-grid'},...localCreationTools.map(tool=>h('section',{class:'creation-card'},
+        h('h2',{},tool.name),h('span',{class:'badge neutral'},tool.tool),h('p',{class:'s t2'},tool.detail),
+        creationActionButton(tool.action==='inspect'?'打开审片与转写':'打开工作台',tool.action)))));
+    return;
+  }
+  if (selection === 'online') {
+    view.append(h('div',{class:'creation-grid'},
+      h('section',{class:'creation-card'},h('h2',{},'LibTV'),h('span',{class:'badge acc'},'已有接入 · 智能体宿主桥'),
+        h('p',{class:'s t2'},'镜头生成与返修，提交前核对积分，回收后审看候选。'),creationActionButton('打开 LibTV 生成','libtv')),
+      ...['RunningHub','Higgsfield'].map(name=>h('section',{class:'creation-card'},h('h2',{},name),
+        h('span',{class:'badge neutral'},'计划接入'),h('p',{class:'s t3'},'后续接入后，在此显示实际可用能力。')))));
+    return;
+  }
+  const tasks = h('div',{},h('p',{class:'s t3'},'读取当前任务…'));
+  const refresh = h('button',{class:'pill sm',onclick:renderCreation},'刷新状态');
+  head.append(h('div',{class:'actions'},refresh));
+  view.append(h('p',{class:'s t3',style:'margin-bottom:18px'},'集中启动现有整集制作，查看任务、等待原因和结果。'),
+    h('div',{class:'creation-columns'},
+      h('section',{class:'creation-card'},h('h2',{},'整集制作'),h('p',{class:'s t2'},'审查已有素材、出初剪或指定镜头返修，沿用范围与预算授权。'),
+        creationActionButton('打开整集制作','episodeBtn')),
+      h('section',{class:'creation-card'},h('h2',{},'统一任务'),h('p',{class:'s t2'},'查看生成、审片、超分和导出，定位等待与失败的任务。'),
+        creationActionButton('查看全部任务','tasksBtn'))),
+    h('section',{class:'creation-panel'},h('h2',{},'当前任务状态'),tasks),
+    h('details',{},h('summary',{class:'s'},'八步自动调度 · 待补齐'),h('p',{class:'s t3'},
+      '后续补齐完整执行计划、阶段自动验收与定向返修、用时上限，以及客户确认节点。')));
+  try {
+    const data = await api('/api/tasks');
+    if (request !== creationRequest || S.view !== 'creation' || creationSelection !== selection) return;
+    const counts = new Map();
+    for (const task of data.items) {
+      const label = taskState(task.kind,task.status,task.progress).label;
+      counts.set(label,(counts.get(label)||0)+1);
+    }
+    tasks.replaceChildren(h('p',{class:'s t2'},data.total ? '已登记 '+data.total+' 项任务' : '暂无任务'),
+      h('div',{class:'chips'},...Array.from(counts,([label,count])=>h('span',{class:'badge neutral'},label+' · '+count))));
+  } catch (error) {
+    if (request === creationRequest) tasks.replaceChildren(h('p',{class:'s err'},'任务状态暂不可读：'+error.message));
+  }
+}
 /* 收展时内容区的宽度会在 220ms 里慢慢变；布局按目标宽度一次画好，不等动效结束再画第二次，不然看着像闪 */
 function anticipate(delta) {
   const sc = $('#tlScroll'); if (!sc) return;
@@ -1177,7 +1366,7 @@ function renderAuxRail() {
   }
 }
 $('#drawerBtn').addEventListener('click', () => { $('#aux').classList.contains('is-open') ? closeAux() : openAux(); });
-$('#navToggle').addEventListener('click', () => { UI.navOpen = !UI.navOpen; saveUI(); if (!isNarrow()) anticipate(UI.navOpen ? -108 : 108); applyUI(); });
+$('#navToggle').addEventListener('click', () => { const before = navW(); UI.navOpen = !UI.navOpen; saveUI(); if (!isNarrow()) anticipate(before - navW()); applyUI(); });
 (() => {
   const grip = $('#auxGrip'); let startX = 0, startW = 0;
   grip.addEventListener('pointerdown', e => { startX = e.clientX; startW = UI.auxW; grip.setPointerCapture(e.pointerId); grip.classList.add('on'); shell.classList.add('dragging'); e.preventDefault(); });
@@ -1999,12 +2188,13 @@ function tlInit() {
   tlRenderHead(); tlDraw(); TL.ensure = true; tlTime($('#video')?.currentTime || 0);
 }
 /* v0.3：草稿独立于当前审片时间线，只有导出后成为新成片。 */
-$('#automationBtn').addEventListener('click', async () => {
+$('#automationBtn').addEventListener('click', () => openAutomation());
+async function openAutomation(initialMode = 'inspect') {
   const dialog = h('dialog', {class:'review-dialog', 'aria-label':'镜头与候选'});
   const body = h('div'), form = h('section', {class:'quality-section'});
   const selected = {inspect:new Set(), rebuild:new Set()};
   const dialogue = new Map();
-  let workspace, workspaceSignature = '', refreshing = false, starting = false, mode = 'inspect';
+  let workspace, workspaceSignature = '', refreshing = false, starting = false, mode = initialMode;
   let sourceKind = 'current', sourceFinal = reviewVersion()?.path || '';
   const preferredFinal = S.view === 'progress' ? S.reviewFinal : null;
   let preferredShot = S.view === 'progress' ? S.selSeg?.id : null;
@@ -2144,7 +2334,7 @@ $('#automationBtn').addEventListener('click', async () => {
     h('h3', {}, '检查与初剪记录'), body);
   renderMode();
   const timer=setInterval(refresh,3000);dialog.addEventListener('close',()=>{clearInterval(timer);dialog.remove();});document.body.append(dialog);dialog.showModal();await refresh();
-});
+}
 function showAutoPacket(p){
   const dialog=h('dialog',{class:'review-dialog','aria-label':'自动审片证据包'});
   const video=h('video',{src:fileUrl(p.clip.path),controls:true,style:'width:100%;max-height:40vh'});
@@ -2159,7 +2349,8 @@ function showAutoPacket(p){
   dialog.addEventListener('close',()=>{video.pause();dialog.querySelectorAll('audio').forEach(a=>a.pause());dialog.remove();});document.body.append(dialog);dialog.showModal();
 }
 
-$('#generationBtn').addEventListener('click', async () => {
+$('#generationBtn').addEventListener('click', () => openGeneration());
+async function openGeneration(preferredProvider = 'phosphene') {
   const dialog = h('dialog', {class:'review-dialog','aria-label':'模型生成与单镜返修'});
   const jobs = h('div',{},'正在读取返修任务…');
   const form = h('div',{class:'form-grid surface'});
@@ -2168,6 +2359,7 @@ $('#generationBtn').addEventListener('click', async () => {
     h('option',{value:'phosphene'},'Phosphene 本地 · 图生视频'),
     h('option',{value:'rife'},'本机 RIFE · 补帧'),
     h('option',{value:'libtv'},'LibTV · 生成新画面'));
+  provider.value = preferredProvider;
   const issue = h('textarea',{class:'textarea','aria-label':'要修什么',rows:2,placeholder:'例如：人物转头时画面卡顿'});
   const preserve = h('textarea',{class:'textarea','aria-label':'要保留什么',rows:2,placeholder:'例如：保留表情、运镜和原声'});
   const evidence = h('input',{'aria-label':'问题在哪一秒',placeholder:'例如：镜头内 1.2–1.8 秒；也可填证据路径'});
@@ -2339,7 +2531,7 @@ $('#generationBtn').addEventListener('click', async () => {
     controls();
     if (data.error) hint.textContent=data.error;
   } catch(e) { jobs.textContent=e.message; }
-});
+}
 
 $('#finishingBtn').addEventListener('click', () => openFinishing());
 
