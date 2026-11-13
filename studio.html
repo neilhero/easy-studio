@@ -1002,6 +1002,8 @@ details.rec[open] > summary { margin-bottom: 8px; }
 .nav .creation-sub .i { min-height:30px; height:auto; padding:7px 5px; border-radius:7px; }
 .nav .creation-sub .i .ic { display:none; }
 .nav .creation-sub .i .l { font-size:11px; white-space:normal; line-height:1.5; }
+.shell.nav-open .nav .creation-sub .i .l { white-space:normal; min-width:0; }
+.creation-sub .creation-number { width:19px; height:19px; border-radius:6px; font-size:10px; }
 .shell.creation-mode { grid-template-columns:var(--nav-w) minmax(0,1fr); }
 .shell.creation-mode .aux, .shell.creation-mode #drawerBtn { display:none; }
 .creation-roadmap { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:20px; }
@@ -1016,7 +1018,11 @@ details.rec[open] > summary { margin-bottom: 8px; }
 .creation-panel p, .creation-card p { margin-block:8px; }
 .creation-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
 .creation-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:14px; }
-.creation-grid .creation-card { margin:0; }
+.creation-grid .creation-card { margin:0; display:flex; flex-direction:column; align-items:flex-start; }
+.creation-grid .creation-card > .pill { margin-top:auto; }
+.creation-grid .creation-card > p { margin-bottom:14px; }
+.creation-grid .creation-card h2 { display:flex; gap:9px; align-items:center; }
+.creation-grid .creation-card h2 .creation-number { display:inline-grid; place-items:center; width:24px; height:24px; border-radius:7px; background:var(--island-3); color:var(--t2); font-size:12px; font-weight:650; flex:none; }
 .creation-check { border-top:1px solid var(--line); padding-top:12px; margin-top:16px; }
 @media (max-width:1000px) { .creation-roadmap { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:720px) {
@@ -1247,7 +1253,10 @@ function creationActionButton(label, action, className = 'pill sm') {
 }
 function showCreation(selection) {
   creationSelection = selection;
-  creationSubmenus.forEach((menu,key) => {menu.hidden = key !== selection;});
+  creationSubmenus.forEach((menu,key) => {
+    menu.hidden = key !== selection;
+    $('#creationNav [data-create="'+key+'"]').setAttribute('aria-expanded',String(!menu.hidden));
+  });
   switchView('creation');
   renderCreation();
 }
@@ -1256,21 +1265,29 @@ function buildCreationNav() {
   const originals = new Map($$('button',container).map(button => [button.id,button]));
   container.replaceChildren();
   function group(key,label,icon,actions) {
+    const numbered = key === 'local' || key === 'online';
     const submenu = h('div',{class:'creation-sub',hidden:true,id:'creation-sub-'+key});
     const button = h('button',{class:'i',type:'button','data-create':key,title:label,
-      'aria-controls':submenu.id,onclick:() => showCreation(key)},
+      'aria-controls':submenu.id,'aria-expanded':'false',onclick:() => {
+        if (numbered && S.view === 'creation' && creationSelection === key) {
+          submenu.hidden = !submenu.hidden;
+          button.setAttribute('aria-expanded',String(!submenu.hidden));
+        } else showCreation(key);
+      }},
       h('span',{class:'ic'},typeof icon === 'number'
         ? h('span',{class:'creation-number'},icon) : h('span',{html:ICON[icon]})),h('span',{class:'l'},label));
-    for (const [name,action] of actions) {
+    for (const [index,[name,action]] of actions.entries()) {
       const entry = originals.get(action) || creationActionButton(name,action,'i');
-      if (!originals.has(action)) entry.replaceChildren(h('span',{class:'l'},name));
+      if (!originals.has(action)) entry.replaceChildren(
+        numbered ? h('span',{class:'creation-number'},index+1) : null,h('span',{class:'l'},name));
+      if (!action) entry.disabled = true;
       submenu.append(entry);
     }
     container.append(button,submenu);
     creationSubmenus.set(key,submenu);
   }
   group('local','本地工具','grid',localCreationTools.map(tool=>[tool.name,tool.action]));
-  group('online','联网平台','layers',[['LibTV 镜头生成','libtv']]);
+  group('online','联网平台','layers',[['LibTV 镜头生成','libtv'],['RunningHub · 待接入',null],['Higgsfield · 待接入',null]]);
   container.append(h('div',{class:'creation-divider'}),h('div',{class:'nav-label'},'创作流程'));
   creationStages.forEach((stage,index) => group('stage-'+index,stage.name,index+1,stage.actions));
   container.append(h('div',{class:'creation-divider'}));
@@ -1305,16 +1322,16 @@ async function renderCreation() {
   }
   if (selection === 'local') {
     view.append(h('p',{class:'s t3',style:'margin-bottom:18px'},'按用途选择本地工具。具体配置与执行状态可在对应工作台查看。'),
-      h('div',{class:'creation-grid'},...localCreationTools.map(tool=>h('section',{class:'creation-card'},
-        h('h2',{},tool.name),h('span',{class:'badge neutral'},tool.tool),h('p',{class:'s t2'},tool.detail),
+      h('div',{class:'creation-grid'},...localCreationTools.map((tool,index)=>h('section',{class:'creation-card'},
+        h('h2',{},h('span',{class:'creation-number'},index+1),tool.name),h('span',{class:'badge neutral'},tool.tool),h('p',{class:'s t2'},tool.detail),
         creationActionButton(tool.action==='inspect'?'打开审片与转写':'打开工作台',tool.action)))));
     return;
   }
   if (selection === 'online') {
     view.append(h('div',{class:'creation-grid'},
-      h('section',{class:'creation-card'},h('h2',{},'LibTV'),h('span',{class:'badge acc'},'已有接入 · 智能体宿主桥'),
+      h('section',{class:'creation-card'},h('h2',{},h('span',{class:'creation-number'},1),'LibTV'),h('span',{class:'badge acc'},'已有接入 · 智能体宿主桥'),
         h('p',{class:'s t2'},'镜头生成与返修，提交前核对积分，回收后审看候选。'),creationActionButton('打开 LibTV 生成','libtv')),
-      ...['RunningHub','Higgsfield'].map(name=>h('section',{class:'creation-card'},h('h2',{},name),
+      ...['RunningHub','Higgsfield'].map((name,index)=>h('section',{class:'creation-card'},h('h2',{},h('span',{class:'creation-number'},index+2),name),
         h('span',{class:'badge neutral'},'计划接入'),h('p',{class:'s t3'},'后续接入后，在此显示实际可用能力。')))));
     return;
   }
