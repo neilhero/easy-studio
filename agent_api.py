@@ -82,7 +82,7 @@ WRITES = {
     'assets.import':'source为获授权import-root内的本地绝对路径；复制入素材库并校验内容',
     'assets.relink':'asset_id/path；为已移动的相同内容重新绑定路径，旧评审不自动转移',
     'shots.create':'segment/scene/text/duration；新增镜头，保留原分段表',
-    'review.mutate':'复用评审动作 associate/unlink/select/review/bind/accept；segment可用稳定镜头ID，asset_id可代替path，选用/评审须给fingerprint',
+    'review.mutate':'复用评审动作 associate/unlink/select/review/bind/accept；script 保存镜头内容，传 expected_script、source{text,dur}、fields{purpose,action,dialogue,requirements,cast,duration} 和 confirmed；segment可用稳定镜头ID，asset_id可代替path，选用/评审须给fingerprint',
     'edit.save':'clips数组：id/src或asset_id/in/out/a；保存初剪，返回原生草稿修订',
     'edit.action':'action=selected/import/undo/redo；复用草稿操作',
     'export.start':'导出已保存草稿；可选revision，否则使用当前草稿修订',

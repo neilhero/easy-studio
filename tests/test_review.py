@@ -62,6 +62,31 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(self.row()["cells"]["过审"], "待审")
         self.assertIn("过审 0", app.api_segments()["status"])
 
+    def test_script_content_persists_and_rejects_stale_edits(self):
+        row=self.row()
+        fields=dict(purpose="叙事目的",action="伸手",dialogue="",requirements="右手",cast="悟空",duration="3")
+        request=dict(expected_script=None,source={"text":row["text"],"dur":row["dur"]},fields=fields,confirmed=True)
+        self.mutate("script",**request)
+        stored=self.row()["review_entry"]["script"]
+        self.assertEqual(stored["fields"],fields)
+        self.assertTrue(stored["confirmed"])
+        self.assertEqual(self.row()["cells"]["过审"],"待审")
+        with self.assertRaisesRegex(ValueError,"已被修改"):
+            self.mutate("script",**request)
+        request.update(expected_script=stored,confirmed=False)
+        self.mutate("script",**request)
+        self.assertFalse(self.row()["review_entry"]["script"]["confirmed"])
+
+    def test_script_confirmation_requires_action_and_current_source(self):
+        row=self.row()
+        request=dict(expected_script=None,source={"text":row["text"],"dur":row["dur"]},
+                     fields=dict(purpose="",action="",dialogue="",requirements="",cast="",duration=""),confirmed=True)
+        with self.assertRaisesRegex(ValueError,"画面里发生什么"):
+            self.mutate("script",**request)
+        request["source"]["text"]="old"
+        with self.assertRaisesRegex(ValueError,"原始分段已变化"):
+            self.mutate("script",**request)
+
     def test_association_selection_review_persist_independently(self):
         c = self.linked()
         self.mutate("select", path=c["path"], fingerprint=c["fingerprint"])

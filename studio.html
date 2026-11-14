@@ -1196,6 +1196,7 @@ function applyUI() {
 addEventListener('resize', applyUI);
 shell.addEventListener('transitionend', e => { if (e.target === shell) applyUI(); });
 function switchView(name) {
+  if(name!==S.view && !discardShotDraft()) return;
   S.view = name;
   $('#v-creation').hidden = name !== 'creation';
   shell.classList.toggle('creation-mode', name === 'creation');
@@ -1757,6 +1758,8 @@ function progressSummary(row) {
 }
 
 function showProgressCandidates(row) {
+  if(!discardShotDraft()) return;
+  S.shotDetailTab={segment:row.id,tab:'media'};
   if (S.selSeg?.id !== row.id) S.timelineShot = null;
   S.selSeg = row;
   renderAuxProgress();
@@ -1766,6 +1769,7 @@ function showProgressCandidates(row) {
 
 let progressRequest = 0;
 async function renderProgress(force) {
+  if ($('#shot-detail-story')?.dataset.dirty) return;
   const request = ++progressRequest;
   const v = $('#v-progress');
   if (!S.segs) v.replaceChildren(h('p', {class:'s t3'}, '读取中…'));
@@ -1803,6 +1807,7 @@ async function renderProgress(force) {
   S.segs.rows.forEach(row => {
     const summary = progressSummary(row);
     const select = () => {
+      if(!discardShotDraft()) return;
       S.selSeg = row;
       S.timelineShot = null;
       $$('tr', tbody).forEach(tr => tr.setAttribute('aria-selected', String(tr === line)));
@@ -1866,11 +1871,64 @@ async function openSegmentFor(clip, film) {
   S.timelineShot = {segment:row.id, clip, film};
   S.selSeg = row; await switchView('progress'); openAux();
 }
+function discardShotDraft() {
+  const panel=$('#shot-detail-story');
+  if(panel?.dataset.dirty && !confirm('放弃尚未保存的镜头内容？')) return false;
+  if(panel) panel.dataset.dirty='';
+  return true;
+}
+addEventListener('beforeunload',event=>{
+  if($('#shot-detail-story')?.dataset.dirty) {event.preventDefault();event.returnValue='';}
+});
 function renderAuxProgress() {
-  const a = $('#a-progress'); a.innerHTML = ''; const r = S.selSeg;
+  let a = $('#a-progress'); a.innerHTML = ''; const r = S.selSeg;
   if (!r) { a.append(h('div', { class: 'aux-h' }, h('b', {}, '点一段看它怎么生成的'), h('span', {})), h('p', { class: 's t3' }, '参考了什么、发给模型的提示词、出了几条候选、三项证据（同一个人、产品还原、无崩坏），都在这里。')); return; }
   const f = r.files, j = r.json || {};
-  a.append(h('div', { class: 'aux-h' }, h('b', { class: 'ellipsis', style: 'min-width:0' }, `${r.id} · ${r.text}`), h('span', {}, r.dur ? `${r.dur} 秒` : '')));
+  a.append(h('div', { class: 'aux-h' }, h('b', { class: 'ellipsis', style: 'min-width:0' }, `${r.id} · ${r.scene || '镜头详情'}`), h('span', {}, r.dur ? `${r.dur} 秒` : '')));
+  const tabs = h('div',{class:'review-actions',role:'tablist','aria-label':'镜头详情分类'});
+  const panels = {};
+  const currentTab = S.shotDetailTab?.segment === r.id ? S.shotDetailTab.tab : 'story';
+  for (const [key,label] of [['story','镜头内容'],['media','素材与选片'],['film','成片检查']]) {
+    const panel = h('section',{id:'shot-detail-'+key,role:'tabpanel','aria-labelledby':'shot-tab-'+key,hidden:key!==currentTab});
+    panels[key]=panel;
+    tabs.append(h('button',{id:'shot-tab-'+key,class:'pill sm',role:'tab','aria-selected':String(key===currentTab),
+      'aria-controls':panel.id,onclick:()=>{
+        if (panels.story.dataset.dirty && !confirm('放弃尚未保存的镜头内容？')) return;
+        panels.story.dataset.dirty='';
+        S.shotDetailTab={segment:r.id,tab:key};
+        renderAuxProgress();
+      }},label));
+  }
+  a.append(tabs,...Object.values(panels));
+  const saved = r.review_entry?.script;
+  const confirmed = saved?.confirmed && saved.source?.text === r.text && saved.source?.dur === r.dur;
+  panels.story.append(h('p',{class:'s t3'},confirmed?'镜头内容已确认':'镜头内容待确认'));
+  const values = {};
+  for (const [key,label,fallback] of [
+    ['purpose','这一镜为什么要拍',''],['action','画面里发生什么',r.text],
+    ['dialogue','人物说什么',''],['requirements','必须保留的故事信息',''],
+    ['cast','出场人物',(j.cast||[]).join('、')],['duration','预计时长（秒）',r.dur]]) {
+    const input=h('textarea',{class:'textarea',rows:key==='action'?3:2,'aria-label':label,
+      oninput:()=>{panels.story.dataset.dirty='1';}},saved?.fields[key] ?? String(fallback||''));
+    values[key]=input;
+    panels.story.append(h('label',{class:'s',style:'display:block;margin-top:12px'},label,input));
+  }
+  async function saveScript(confirmContent,button) {
+    const ok=await reviewSave({action:'script',segment:r.id,expected_script:saved||null,
+      source:{text:r.text,dur:r.dur},fields:Object.fromEntries(Object.entries(values).map(([key,input])=>[key,input.value])),
+      confirmed:confirmContent},button);
+    if(ok) toast(confirmContent?'镜头内容已确认':'镜头内容已保存，待确认','ok');
+  }
+  panels.story.append(h('div',{class:'review-actions'},
+    h('button',{class:'pill sm',onclick:e=>saveScript(false,e.currentTarget)},'保存内容'),
+    h('button',{class:'pill primary sm',onclick:e=>saveScript(true,e.currentTarget)},'确认镜头内容')),
+    h('p',{class:'xs t3'},'下一步：视听筹备与分镜。内容确认、素材审查与成片验收分别记录。'),
+    h('details',{},h('summary',{},'原始分段记录与历史'),
+      h('p',{class:'s wrap'},r.text||'暂无分段内容'),
+      h('div',{class:'chips'},...Object.entries(r.cells).map(([key,value])=>h('span',{class:'badge neutral'},key+' '+(value||'—')))),
+      saved?h('p',{class:'xs t3'},'最近保存：'+saved.at):null));
+  panels.film.append(reviewPanel(r,'film'));
+  a=panels.media;
   if (S.timelineShot?.segment === r.id) {
     const {clip, film} = S.timelineShot;
     a.append(h('div', {class:'review-box'}, h('b', {}, '从时间线打开 · ' + clip.id),
@@ -1885,12 +1943,12 @@ function renderAuxProgress() {
     h('div', {class:'review-actions'},
       h('button', {class:'pill sm', onclick:() => showProgressCandidates(r)}, r.files.candidates.length?'看候选':'关联候选'),
       h('button', {class:'pill sm', onclick:() => openQuality({segment:r.id, final:reviewVersion()?.path})}, '连戏与质检'))));
-  a.append(h('details', {class:'rec'}, h('summary', {}, '分段状态'),
-    h('div', {class:'chips'}, ...Object.entries(r.cells).map(([k,v]) => h('span', {class:'badge neutral'}, `${k} ${v || '—'}`)))));
-  const detail = reviewPanel(r);
+  const detail = reviewPanel(r,'media');
   detail.id = 'progressCandidateListLink';
   a.append(detail);
-  const sec = (title, n, ...kids) => a.append(h('div', {class:'aux-sec seg-detail', id:title==='候选'?'progressCandidateList':null}, h('div', {class:'k'}, title + (n != null ? ` · ${n}` : '')), ...kids));
+  const sec = (title, n, ...kids) => a.append(title==='候选'
+    ? h('div',{class:'aux-sec seg-detail',id:'progressCandidateList'},h('div',{class:'k'},'这一镜的素材 · '+n),...kids)
+    : h('details',{class:'aux-sec'},h('summary',{},title+(n!=null?' · '+n:'')),...kids));
   // 生成用了什么：分段表里写的参考、首尾帧、参考视频和音频、现场声、故意的效果、规则
   const refs = (j.refs || []).map(x => ({ path: x.file, label: (ROLE[x.role] || x.role || '参考') + (x.note ? ' · ' + x.note : '') }));
   if (j.first_frame) refs.push({ path: j.first_frame, label: '首帧' });
@@ -1910,7 +1968,7 @@ function renderAuxProgress() {
   if (f.candidates.length) {
     sec('候选', f.candidates.length, h('div', { class: 'cands' }, ...f.candidates.map(c => h('div', { class: 'cand' },
       h('video', { src: fileUrl(c.path), controls: true, preload: 'metadata', muted: true }),
-      h('div', { class: 'n' }, h('span', { class: 'ellipsis', style: 'min-width:0' }, c.name), summary.uses.some(use => use.src === c.path) ? h('span', {class:'badge acc'}, '当前用片') : null, c.selected ? h('span', { class: 'badge ok' }, '已选候选') : null, c.discarded ? h('span', { class: 'badge neutral' }, '废弃') : null, c.status ? h('span', { class: 'xs t3' }, c.status) : null),
+      h('div', { class: 'n' }, h('span', { class: 'ellipsis', style: 'min-width:0' }, c.name), summary.uses.some(use => use.src === c.path) ? h('span', {class:'badge acc'}, '当前用片') : null, c.selected ? h('span', { class: 'badge ok' }, '首选素材') : null, c.discarded ? h('span', { class: 'badge neutral' }, '废弃') : null, c.status ? h('span', { class: 'xs t3' }, c.status) : null),
       candidateReview(r, c),
       c.job ? h('details', { class: 'rec', open: false }, h('summary', { title: '这一条真正发给模型的提示词、参考图、参考音频和参数' }, `发给模型的提示词和参考`), renderJob(c.job, c.path), c.raw ? h('details', { class: 'rec' }, h('summary', { class: 'sub' }, `原始记录 · ${(c.record || '').split('/').pop()}`), h('pre', { class: 'stt', style: 'max-height:240px' }, JSON.stringify(c.raw, null, 1))) : null) : null))));
   } else sec('候选', 0, h('p', { class: 's t3' }, '还没有关联候选。可从上方关联素材库或生成目录中的视频。'));
@@ -1926,6 +1984,7 @@ async function reviewSave(body, button) {
   if (button) button.disabled = true;
   try {
     await post('/api/review', body);
+    if(body.action==='script' && $('#shot-detail-story')) $('#shot-detail-story').dataset.dirty='';
     await renderProgress(true);
     toast('已保存评审记录', 'ok');
     return true;
@@ -1935,18 +1994,24 @@ async function reviewSave(body, button) {
 function candidateReview(r, c) {
   const note = h('textarea', { class: 'textarea', rows: '2', 'aria-label': `${c.name} 评审意见`, placeholder: '评审意见；退回时必填' }, c.review_record?.note || '');
   const save = (action, status, e) => reviewSave({ action, segment: r.id, path: c.path, fingerprint: c.fingerprint, status, note: note.value }, e.currentTarget);
-  return h('div', { class: 'review-box' }, reviewBadge(c.selection_stale ? '选用文件已变化，需复核' : c.review),
-    h('p', { class: 'path' }, c.path), c.missing ? h('p', {class:'err'}, '文件已缺失，可解除关联后重新导入') : null, note,
+  return h('div', { class: 'review-box' }, reviewBadge(c.selection_stale ? '文件已变化，需复核' : c.review),
+    c.missing ? h('p', {class:'err'}, '文件已缺失，可移出此镜头后重新导入') : null,
+    h('p',{class:'xs t3'},'记为首选只保存决定；到初剪确认采用后才会替换当前用片。'),
     h('div', { class: 'review-actions' },
-      h('button', { class: 'pill sm', type: 'button', disabled: c.missing, onclick: e => save('select', null, e) }, c.selected ? '确认选用此版本' : '选用'),
+      h('button', { class: 'pill sm', type: 'button', disabled: c.missing, onclick: e => save('select', null, e) }, c.selected ? '确认首选' : '记为首选'),
+    ),
+    h('details',{},h('summary',{},'记录检查结果与更多操作'),note,h('p',{class:'path wrap'},c.path),
+    h('div',{class:'review-actions'},
       h('button', { class: 'pill sm', type: 'button', disabled: c.missing, onclick: e => save('review', 'approved', e) }, '过审'),
       h('button', { class: 'pill sm danger', type: 'button', disabled: c.missing, onclick: e => save('review', 'rejected', e) }, '退回'),
       h('button', { class: 'pill sm', type: 'button', disabled: c.missing, onclick: e => save('review', 'pending', e) }, '重置待审'),
-      r.review_entry?.paths?.includes(c.path) ? h('button', { class: 'pill sm', type: 'button', onclick: e => save('unlink', null, e) }, '解除关联') : null));
+      r.review_entry?.paths?.includes(c.path) ? h('button', { class: 'pill sm', type: 'button', onclick: e => save('unlink', null, e) }, '移出此镜头') : null),
+      h('p',{class:'xs t3'},'移出只解除关联，源文件保留。')));
 }
-function reviewPanel(r) {
+function reviewPanel(r, section = 'both') {
   const box = h('div', { class: 'review-box' });
-  box.append(h('b', {}, '候选关联'), h('p', { class: 'xs t3' }, '选用只登记候选，不改变现有初剪。'));
+  if(section !== 'film') {
+  box.append(h('b', {}, '添加这一镜的素材'), h('p', { class: 'xs t3' }, '从素材库挑选视频，加入这一镜供审看。'));
   const chooser = h('select', { class: 'select', 'aria-label': '关联视频候选' }, h('option', { value: '' }, '选择素材库或生成目录中的视频…'));
   const load = h('button', { class: 'pill sm', type: 'button', onclick: async () => {
     load.disabled = true;
@@ -1958,12 +2023,14 @@ function reviewPanel(r) {
       if (chooser.options.length === 1) toast('没有未关联的视频');
     } catch (e) { toast(e.message, 'bad'); }
     finally { load.disabled = false; }
-  } }, '读取视频列表');
+  } }, '从素材库添加');
   box.append(h('div', { class: 'review-actions' }, load), chooser,
     h('button', { class: 'pill sm', type: 'button', style: 'margin-top:8px', onclick: e => {
       if (!chooser.value) { toast('请先读取列表并选择视频'); return; }
       reviewSave({ action: 'associate', segment: r.id, path: chooser.value }, e.currentTarget);
-    } }, '关联到这一镜'));
+    } }, '加入这一镜'));
+  }
+  if(section === 'media') return box;
   const finals = h('select', { class: 'select', 'aria-label': '验收成片版本' }, S.finals.videos.length ? null : h('option', {value:''}, '暂无成片'));
   S.finals.videos.forEach(v => finals.append(h('option', { value: v.path, selected: v.path === reviewVersion()?.path }, `${v.version} · ${v.name}`)));
   const ctxBox = h('div', { style: 'margin-top:12px' });

@@ -417,7 +417,25 @@ def review_mutate(body):
         state = review_read()
         entry = state["segments"].setdefault(sid, {})
         event = {"segment": sid, "action": action, "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
-        if action in {"associate", "unlink", "select", "review"}:
+        if action == "script":
+            if body.get("expected_script") != entry.get("script"):
+                raise ValueError("镜头内容已被修改，请刷新后再保存")
+            source = {"text": row["text"], "dur": row["dur"]}
+            if body.get("source") != source:
+                raise ValueError("原始分段已变化，请刷新后核对")
+            fields = body.get("fields")
+            names = {"purpose", "action", "dialogue", "requirements", "cast", "duration"}
+            if not isinstance(fields, dict) or set(fields) != names:
+                raise ValueError("镜头内容字段不完整")
+            if any(not isinstance(v, str) or len(v) > 8000 for v in fields.values()):
+                raise ValueError("镜头内容须为文字，每项最多8000字")
+            if not isinstance(body.get("confirmed"), bool):
+                raise ValueError("请选择保存或确认")
+            if body["confirmed"] and not fields["action"].strip():
+                raise ValueError("请先填写画面里发生什么")
+            entry["script"] = {"fields": fields, "confirmed": body["confirmed"], "source": source, "at": event["at"]}
+            event["script"] = entry["script"]
+        elif action in {"associate", "unlink", "select", "review"}:
             path = body.get("path")
             p = candidate_file(path, required=action != "unlink")
             path = rel(p) if p else path
